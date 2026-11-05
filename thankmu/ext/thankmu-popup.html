@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="css/thankmu-tokens.css">
+<link rel="stylesheet" href="css/thankmu-popup.css">
+<title>{name} popup</title>
+</head>
+<body>
+<!-- W-P6: the approved D2 popup, in two frames around upstream's controls (patch.json edits on popup.html).
+     ?part=head: the header band, its stats as chips, above upstream's site controls. No part: the reader's account,
+     the switch and the footer, below them. popup.js shows the part its frame asked for. Compact (founder, 2026-10-31:
+     "compact, no scroll"): every state fits Chrome's 600 px popup with upstream's block; docs/rebrand.md "Popup". -->
+<div id="head" hidden>
+    <div class="pp-head">
+        <img src="img/thankmu.svg" alt="" width="28" height="28">
+        <b class="pp-name">{name}</b>
+        <div id="stats" class="pp-stats" aria-label="Stats" hidden>
+            <div id="stat-here" class="pp-chip" hidden><b></b> <span>ads blocked here</span></div>
+            <div id="stat-likes" class="pp-chip" hidden><b></b> <span>likes</span></div>
+        </div>
+        <button id="close" class="pp-x" type="button" aria-label="Close">×</button>
+    </div>
+</div>
+<div id="body" hidden>
+    <!-- A failed click's message stands in for the state's paragraph or the wallet's sub-lines (.pp-yield) while it
+         shows, so it never makes the popup taller. -->
+    <p id="error" class="pp-p pp-error" role="alert" aria-live="assertive" hidden></p>
+    <div id="signedOut" class="pp-section" hidden>
+        <p id="revoked" class="pp-p pp-yield" hidden>Your plugin was disconnected, for example after a password reset. Connect it again.</p>
+        <p id="pitch" class="pp-p pp-yield">Ads are blocked, free. Sign in to turn on your tip jar.</p>
+        <div class="pp-row">
+            <button id="signIn" class="tm-btn primary" type="button">Sign in</button>
+            <button id="join" class="tm-btn" type="button">Join free</button>
+        </div>
+    </div>
+    <div id="pairing" class="pp-section" hidden>
+        <p class="pp-p pp-yield"><b>Finish in the ThankMu tab.</b> Sign in or join there, then click Connect. This popup updates when you're done.</p>
+        <button id="pairAgain" class="tm-btn" type="button">Open the tab again</button>
+    </div>
+    <div id="signedIn" class="pp-section" hidden>
+        <p id="unverified" class="pp-p pp-yield" hidden>Could not reach {name} just now. The connection is kept.</p>
+        <div id="wallet" class="pp-card pp-wallet" hidden>
+            <div class="pp-wallet-top">
+                <span class="pp-wallet-label">Your wallet</span>
+                <b id="balance" class="bal-num"></b>
+                <button id="addMoney" class="tm-link" type="button">Add money</button>
+                <button id="reloadLink" class="tm-link" type="button" hidden>Reload to keep tipping</button>
+            </div>
+            <div id="promo" class="bal-promo pp-yield" hidden></div>
+            <p id="reload" class="pp-p pp-yield" hidden>Your balance is too low to tip.</p>
+        </div>
+    </div>
+    <p id="unavailable" class="pp-p pp-yield" hidden>Could not reach the app just now. Try again in a moment.</p>
+    <p id="hidden" class="pp-hidden" hidden><span class="pp-hidden-text"><span>Hidden on&nbsp;</span><span id="hiddenDomain"></span><span>&nbsp;for today.</span></span><button id="showAgain" type="button" class="tm-link">Show again</button></p>
+    <div class="pp-foot">
+        <!-- The tip jar switch shows signed in only. Signed out the tip jar is off, and the page shows the pill. -->
+        <div id="switches" class="pp-switches" role="group" aria-label="Switches" hidden>
+            <label class="pp-switch" title="A like and tip card in each spot where an ad was blocked">
+                <input id="prompts" type="checkbox" disabled aria-describedby="promptsHint">
+                <span>Tip jar</span>
+                <span id="promptsHint" hidden>A like and tip card in each spot where an ad was blocked</span>
+            </label>
+        </div>
+        <span id="footOut">Ad blocking is free and always on.</span>
+        <span id="footIn" class="pp-links" hidden>
+            <button id="feed" class="tm-link" type="button">Open your feed</button>
+            <button id="settings" class="tm-link" type="button">Settings</button>
+            <button id="signOut" class="tm-link" type="button">Sign out</button>
+        </span>
+    </div>
+</div>
+<script src="js/thankmu/popup.js" type="module"></script>
+</body>
+</html>

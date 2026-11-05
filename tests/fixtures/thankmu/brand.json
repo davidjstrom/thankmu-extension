@@ -1,0 +1,18 @@
+{
+  "name": "ThankMu",
+  "short_name": "ThankMu",
+  "description": "Blocks ads for free. Spend tokens to get past paywalls at partner publishers.",
+  "author": "ThankMu",
+  "homepage_url": "https://thankmu.com",
+  "support_url": "https://thankmu.com/support",
+  "privacy_url": "https://thankmu.com/privacy",
+  "icon_source": "thankmu/icon.svg",
+  "package_name": "thankmu_chromium",
+  "credit": "ThankMu is based on uBlock Origin Lite by Raymond Hill and contributors, under GPLv3.",
+  "lists_credit": "Filter lists maintained by the uAssets volunteers and the listed third-party maintainers.",
+  "license_notice": "ThankMu is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License, version 3. It comes with no warranty.",
+  "license_link_text": "License text (GPLv3)",
+  "source_offer": "Complete source code for every released version, tagged by version number, free of charge:",
+  "source_offer_dev": "Development build: no public source location is configured. Store builds cannot be made without one.",
+  "modification_notice": "Modified by ThankMu, 2026."
+}

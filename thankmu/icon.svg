@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- ThankMu plugin icon, direction "tip-jar" (D1). The ONLY icon source: the plugin build rasterizes every PNG from it
+       with rsvg-convert. States restyle classes only: "bg" plate, "fg" μ, "coin" accent.
+       Off: icon-off.css (patch.json icons.states.off, unchanged). Dev build: icon-dev.css (on) and icon-dev-off.css (off)
+       (needs a per-target stylesheet in targets.json; see mockups/docs/README.md §D1). -->
+  <rect class="bg" x="0" y="0" width="128" height="128" rx="28" ry="28" fill="#165ba8"/>
+  <path class="fg" d="M37 50 V110 M37 66 A22 22 0 0 0 81 66 M81 50 V84 Q81 94 91 94" fill="none" stroke="#ffffff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle class="coin" cx="59" cy="29" r="11" fill="#f5c04a"/>
+</svg>

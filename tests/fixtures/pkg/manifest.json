@@ -1,0 +1,14 @@
+{
+  "action": { "default_icon": { "16": "img/icon_16.png" }, "default_popup": "popup.html" },
+  "author": "Raymond Hill",
+  "background": { "service_worker": "/js/background.js", "type": "module" },
+  "declarative_net_request": { "rule_resources": [ { "id": "ublock-filters", "enabled": true, "path": "/rulesets/main/ublock-filters.json" } ] },
+  "default_locale": "en",
+  "description": "__MSG_extShortDesc__",
+  "host_permissions": [ "<all_urls>" ],
+  "icons": { "16": "img/icon_16.png", "512": "img/icon_512.png" },
+  "manifest_version": 3,
+  "name": "__MSG_extName__",
+  "short_name": "uBO Lite",
+  "version": "1.0"
+}

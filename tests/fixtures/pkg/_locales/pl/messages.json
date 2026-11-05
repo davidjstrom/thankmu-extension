@@ -1,0 +1,38 @@
+{
+  "extName": {
+    "message": "uBlock Origin Lite",
+    "description": "d"
+  },
+  "extShortDesc": {
+    "message": "Efektywny bloker.",
+    "description": "d"
+  },
+  "dashboardName": {
+    "message": "uBO Lite — Panel",
+    "description": "d"
+  },
+  "strictblockSentence1": {
+    "message": "uBo Lite nie pozwolił załadować strony:",
+    "description": "d"
+  },
+  "supportS3P1": {
+    "message": "Zgłoś do <code>uBlockOrigin/uAssets</code>.",
+    "description": "d"
+  },
+  "aboutPrivacyPolicy": {
+    "message": "Polityka prywatności",
+    "description": "d"
+  },
+  "supportS6P1S1": {
+    "message": "Please verify. Note: the page's origin is sent to GitHub.",
+    "description": "d"
+  },
+  "supportFindSpecificButton": {
+    "message": "Find similar reports on GitHub",
+    "description": "d"
+  },
+  "supportReportSpecificButton": {
+    "message": "Create new report on GitHub",
+    "description": "d"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "_doc": "Per-target build config for thankmu/patch_extension.py target=<name>. scripts/build_chrome.sh builds 'dev' with no version (MR builds, unpacked QA) and 'store' with X.Y.Z (release tags, the Chrome Web Store zip). app_origin: the app the plugin pairs with and calls; bare https origin, no path. It sets manifest externally_connectable.matches (that origin only), a host_permissions entry and the generated js/thankmu/config.js. manifest_key: the public key (base64 DER SubjectPublicKeyInfo) that pins the unpacked dev extension id; the private half was discarded and is never needed. The store target must not carry one: the Chrome Web Store assigns its own id. extension_id: the id manifest_key derives (sha256 of the key, a-p encoded); the patch step fails if they disagree, and the app's PLUGIN_EXTENSION_IDS must list it. source_url (W-P4): the public location of the complete source (GPLv3), shown as the source offer on the About pane; an https URL with a path. The store target REQUIRES it: selecting target store without one fails the build before the upstream build starts (a target without one, dev, shows a dev-only note instead). It is set: the public source repo the release job pushes each released tree to (W-P4 item 11; ADR-013 \"Source publication\"). Its host is named in this one field and nowhere else in the project, which is EX-002 (a); scripts/check_exempt_source_url.py enforces that, and the release job's SNAPSHOT_REPO_URL (a CI variable, never a tracked file) must address the same repo. brand (W-P4): per-target overrides of brand.json name and short_name only; dev is \"ThankMu Dev\" so a dev build is never mistaken for the store one, and every place the name is shown (manifest, locales, About, page titles) follows. icon_css (W-P4): per icon state (on, off), a stylesheet file applied by rsvg-convert to thankmu/icon.svg for that target, replacing patch.json icons.states for that state; dev uses the dev colours. A declared file that is missing or empty fails the build. The reference renders live in tests/fixtures/icons/<target>/ (scripts/regen_icon_fixtures.sh) and scripts/check_icons.py compares the built package to them.",
+  "dev": {
+    "app_origin": "https://app.dev.thankmu.com",
+    "manifest_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2V3p6PD+aQsE42bbwlvO0tRa3SzwEpY3xv/PGI7YJOiwkUIAVc+719KpthoUc2RgzTIu3PGimlqKBaDxbV3OHlXdnZs7uccHTpJPfM3jpTrlSSaMNPbxU+Vslq5y3MBQ35Y7lVXfyn0Dj0OTXs9FPT5jWfZDqg7aSlkowuPm4r8J+CRbfqWq4wpJbxb9JfJTI2WfADTL+QMCN8LbhWmQWCFXijHvMDGTuXaRts07h+KT0vFtfrEf91YoTMHbZ/Bn3KtGvCt5eHfqJyoGkkum7DBGnfMZthCA1t/3gJfwF3AvMpfCbK3DBeYyFDemAgKG6W2EH21fZe7Poycr4MV3yQIDAQAB",
+    "extension_id": "eflkimobbajiadiplpcnjibpodgbblnb",
+    "brand": {
+      "name": "ThankMu Dev",
+      "short_name": "ThankMu Dev"
+    },
+    "icon_css": {
+      "on": "thankmu/icons/dev.css",
+      "off": "thankmu/icons/dev-off.css"
+    }
+  },
+  "store": {
+    "app_origin": "https://app.thankmu.com",
+    "source_url": "https://github.com/davidjstrom/thankmu-extension"
+  }
+}

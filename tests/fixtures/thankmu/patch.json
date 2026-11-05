@@ -1,0 +1,222 @@
+{
+  "_doc": "Data for thankmu/patch_extension.py. Placeholders {name} {short_name} {description} {author} {homepage_url} {support_url} {privacy_url} {credit} are filled from brand.json. Every pattern must match exactly the stated count, else the build fails (a new upstream string is a failure, never a silent leak).",
+  "manifest": {
+    "set": {
+      "short_name": "{short_name}",
+      "author": "{author}",
+      "homepage_url": "{homepage_url}"
+    }
+  },
+  "url_pattern": "https?://(?:[^\\s\"'`<>)/]*ublockorigin[^\\s\"'`<>)/]*(?:/[^\\s\"'`<>)]*)?|[^\\s\"'`<>)/]+/(?:(?:r/)?ublockorigin|gorhill|chrisaljoudi)(?![\\w.-])[^\\s\"'`<>)]*|crowdin\\.com/project/ublock[^\\s\"'`<>)]*)",
+  "locale_key_overrides": {
+    "*": {
+      "extName": "{name}",
+      "extShortDesc": "{description}",
+      "supportS3P1": "Report filter issues with specific websites on the <span data-url=\"{support_url}\">{name} support page</span>.",
+      "supportS6P1S1": "Please verify that the issue has not already been reported. <b>Note:</b> clicking the button will cause the page's origin to be sent to the {name} support page.",
+      "supportFindSpecificButton": "Find similar reports",
+      "supportReportSpecificButton": "Create new report"
+    }
+  },
+  "locale_text_replacements": {
+    "tr": [
+      [
+        "uBo Lite",
+        "{name}"
+      ]
+    ],
+    "*": [
+      [
+        "uBlockOrigin/uAssets",
+        "{name} support"
+      ],
+      [
+        "uBlock Origin Lite",
+        "{name}"
+      ],
+      [
+        "uBO Lite",
+        "{name}"
+      ],
+      [
+        "uBOL",
+        "{name}"
+      ],
+      [
+        "uBlock Origin",
+        "{name}"
+      ],
+      [
+        "uBlock",
+        "{name}"
+      ],
+      [
+        "uBO",
+        "{name}"
+      ]
+    ],
+    "pl": [
+      [
+        "uBo Lite",
+        "{name}"
+      ]
+    ]
+  },
+  "html_text_replacements": [
+    [
+      "uBO Lite",
+      "{name}"
+    ]
+  ],
+  "ruleset_details": {
+    "name_overrides": {
+      "ublock-filters": "Core filters – Ads"
+    },
+    "homeurl_on_mark": "remove"
+  },
+  "link_rewrites": [
+    {
+      "file": "dashboard.html",
+      "i18n": "aboutPrivacyPolicy",
+      "href": "{privacy_url}"
+    },
+    {
+      "file": "dashboard.html",
+      "i18n": "aboutCode",
+      "remove": true
+    },
+    {
+      "file": "dashboard.html",
+      "i18n": "aboutSourceCode",
+      "remove": true
+    }
+  ],
+  "edits": [
+    {
+      "file": "dashboard.html",
+      "count": 1,
+      "pattern": "(<div class=\"li\">Copyright \\(c\\) Raymond Hill 2014-present</div>)",
+      "new": "\\1\n            <div class=\"li\">{credit}</div>\n            <div class=\"li\">{lists_credit}</div>"
+    },
+    {
+      "file": "dashboard.html",
+      "count": 1,
+      "pattern": "[ \\t]*<div class=\"li\"><span data-i18n=\"aboutContributors\"></span></div>\\n[ \\t]*<div class=\"liul\">\\s*</div>\\n",
+      "new": ""
+    },
+    {
+      "file": "dashboard.html",
+      "count": 1,
+      "pattern": "src=\"img/ublock\\.svg\" alt=\"[^\"]*\"",
+      "new": "src=\"img/thankmu.svg\" alt=\"{name}\""
+    },
+    {
+      "file": "js/settings.js",
+      "count": 1,
+      "pattern": "my-ubol-settings\\.json",
+      "new": "my-thankmu-settings.json"
+    },
+    {
+      "file": "js/report.js",
+      "count": 2,
+      "pattern": "(?<=')https://[^']*(?:uBlockOrigin|ubol)[^']*(?=')",
+      "new": "{support_url}"
+    },
+    {
+      "file": "js/troubleshooting.js",
+      "count": 1,
+      "pattern": "config\\.rulesets = enabledRulesets\\.sort\\(\\);",
+      "new": "config.rulesets = enabledRulesets.map(s => s.replace(/[^+-].*$/, id => ({ruleset_display_ids})[id] ?? id)).sort();"
+    },
+    {
+      "file": "js/ro-dnr-editor.js",
+      "count": 1,
+      "pattern": "\\$\\{this\\.id\\}-dnr-ruleset\\.json",
+      "new": "${({ruleset_display_ids})[this.id] ?? this.id}-dnr-ruleset.json"
+    },
+    {"file": "popup.html", "count": 1, "pattern": "(<main>\\n)", "new": "\\1    <iframe id=\"thankmuHead\" src=\"thankmu-popup.html?part=head\" title=\"{name}\" style=\"display: block; width: 100%; min-width: 20rem; height: 48px; border: 0\"></iframe>\n"},
+    {"file": "popup.html", "count": 1, "pattern": "(\\n</main>\\n)", "new": "\n    <iframe id=\"thankmuPrompts\" src=\"thankmu-popup.html\" title=\"{name} account\" style=\"display: block; width: 100%; min-width: 20rem; height: 160px; border: 0\"></iframe>\\1"}
+  ],
+  "logo": {
+    "from_icon_source": "img/thankmu.svg",
+    "remove": "img/ublock.svg"
+  },
+  "remove_files": [
+    "README.md",
+    "lib/codemirror/README.md"
+  ],
+  "icons": {
+    "_doc": "Each upstream img/icon_<size>[_off].png is regenerated from brand.json icon_source at the same size. Unknown icon names fail the build.",
+    "states": {
+      "on": null,
+      "off": "svg .bg { fill: #9aa0a6 !important; }"
+    }
+  },
+  "ruleset_display_ids": {
+    "ublock-filters": "core-filters"
+  },
+  "third_party_url_allow": [
+    "^https://[^/]+/sander85/uBO-et$"
+  ],
+  "layer": {
+    "_doc": "W-P3 part B: ThankMu's own code, injected as NEW files (never overwriting an upstream one). files are copied from src at the same path; .html files get the brand placeholders filled. config_module is generated from thankmu/targets.json for the build target (APP_ORIGIN). The manifest's background.service_worker moves from upstream to the wrapper, which imports the ThankMu module first and upstream's worker second, so js/background.js stays byte-identical. Collocated *.test.mjs files are not listed and never ship.",
+    "src": "thankmu/ext",
+    "files": [
+      "js/thankmu-sw.js",
+      "js/thankmu/sw.js",
+      "js/thankmu/pairing.js",
+      "js/thankmu/account.js",
+      "thankmu-account.html",
+      "css/thankmu-account.css",
+      "js/thankmu/tipjar.js",
+      "js/thankmu/adslot.js",
+      "js/thankmu/popupfit.js",
+      "js/thankmu/popup.js",
+      "js/thankmu/popupstate.js",
+      "js/thankmu/popupview.js",
+      "js/thankmu/theme.js",
+      "thankmu-popup.html",
+      "css/thankmu-popup.css",
+      "css/thankmu-tokens.css",
+      "assets/fonts/atkinson-hyperlegible-next-latin-400.woff2",
+      "assets/fonts/atkinson-hyperlegible-next-latin-700.woff2",
+      "assets/fonts/OFL.txt"
+    ],
+    "config_module": "js/thankmu/config.js",
+    "_css_modules_doc": "W-P4 design handoff: the design tokens (css/thankmu-tokens.css, the handoff's tokens.css unchanged) reach the ad-slot card inside its closed shadow root as a string. A content script cannot import CSS and the card must not make any extension file web-accessible, so the patch step inlines the file into a generated classic script (to) that sets globalThis.ThankMuTokensCss in the content script's isolated world. Only the :root and .theme-dark selectors are rewritten, to scope (the card's own element), because they match nothing inside a shadow root. The popup frame and the account page load the same file with a plain <link>. The fonts are for those two extension pages only (their own @font-face); the card keeps the token font stack's system fallback.",
+    "css_modules": [
+      {
+        "from": "css/thankmu-tokens.css",
+        "to": "js/thankmu/tokens-css.js",
+        "scope": ".tm-slot"
+      }
+    ],
+    "service_worker": {
+      "upstream": "/js/background.js",
+      "wrapper": "/js/thankmu-sw.js"
+    },
+    "_content_scripts_doc": "W-T1 part A: appended to the manifest's content_scripts (upstream's entries, if any, untouched). Each js must be one of layer.files. Top frame only; matches are http and https pages.",
+    "content_scripts": [
+      {
+        "js": [
+          "js/thankmu/tokens-css.js",
+          "js/thankmu/adslot.js"
+        ],
+        "matches": [
+          "http://*/*",
+          "https://*/*"
+        ],
+        "run_at": "document_idle",
+        "all_frames": false
+      }
+    ]
+  },
+  "about_license": {
+    "_doc": "W-P4: the modification notice (GPLv3 5(a)), the GPLv3 notice and source offer on the About pane, inserted right after the credit rows (after: the rendered lists_credit row, which must exist exactly once). with_source is used when the build target has targets.json source_url, without_source (dev only: a store target without source_url fails the build) otherwise. {source_url} comes from the target; everything else from brand.json. LICENSE.txt is upstream's GPLv3 text, shipped in the package. The brand scan requires exactly this rendering once. license_file: the licence text the notice links; it must be in the package (checked by the patch step and both package checks).",
+    "file": "dashboard.html",
+    "license_file": "LICENSE.txt",
+    "after": "<div class=\"li\">{lists_credit}</div>",
+    "with_source": "\n            <div class=\"li\" id=\"thankmuModified\">{modification_notice}</div>\n            <div class=\"li\" id=\"thankmuLicense\">{license_notice} <a href=\"LICENSE.txt\" target=\"_blank\">{license_link_text}</a></div>\n            <div class=\"li\" id=\"thankmuSourceOffer\">{source_offer} <a href=\"{source_url}\" target=\"_blank\">{source_url}</a></div>",
+    "without_source": "\n            <div class=\"li\" id=\"thankmuModified\">{modification_notice}</div>\n            <div class=\"li\" id=\"thankmuLicense\">{license_notice} <a href=\"LICENSE.txt\" target=\"_blank\">{license_link_text}</a></div>\n            <div class=\"li\" id=\"thankmuSourceOffer\">{source_offer_dev}</div>"
+  }
+}

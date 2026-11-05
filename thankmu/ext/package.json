@@ -1,0 +1,5 @@
+{
+  "_doc": "Marks the ThankMu extension sources as ES modules for node --test. Not shipped: only the files listed in thankmu/patch.json layer.files are injected.",
+  "private": true,
+  "type": "module"
+}

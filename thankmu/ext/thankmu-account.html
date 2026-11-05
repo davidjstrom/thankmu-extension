@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/thankmu-tokens.css">
+<link rel="stylesheet" href="css/thankmu-account.css">
+<title>{name} account</title>
+</head>
+<body>
+<main>
+    <img src="img/thankmu.svg" alt="{name}" width="48" height="48">
+    <h1>{name} account</h1>
+    <section id="loading"><p>Checking your connection…</p></section>
+    <p id="opening" hidden>Opening your {name} account…</p>
+    <p><button id="myAccount" type="button" hidden>Settings</button></p>
+    <section id="unpaired" hidden>
+        <p id="revoked" hidden>Your plugin was disconnected, for example after a password reset. Connect it again.</p>
+        <p>Connect this browser to your {name} account to tip the publishers you read from your prepaid wallet. Ad blocking works without an account.</p>
+        <button id="pair" type="button">Connect account</button>
+        <p class="hint">This opens {name} in a new tab. Log in there and confirm.</p>
+    </section>
+    <section id="paired" hidden>
+        <p>This browser is connected to your {name} account.</p>
+        <p id="unverified" class="hint" hidden>Could not reach {name} just now. The connection is kept.</p>
+        <button id="unpair" type="button">Disconnect</button>
+        <p class="hint">Disconnecting forgets the connection in this browser. To revoke it everywhere, remove the plugin from your account on {name}.</p>
+    </section>
+    <p id="error" class="error" hidden></p>
+</main>
+<script src="js/thankmu/account.js" type="module"></script>
+</body>
+</html>

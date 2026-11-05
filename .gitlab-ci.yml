@@ -1,0 +1,106 @@
+# thankmu_plugins CI. Runner: instance shell executor on the shared host (untagged; has docker,
+# no node). Builds run inside the pinned node image via scripts/ci/docker_build_chrome.sh; the node
+# version lives only in .nvmrc.
+#
+# CI/CD variables (Settings -> CI/CD -> Variables), all required for the mirror refresh job only:
+#   UPSTREAM_UBO_URL  UPSTREAM_CODEMIRROR_URL  UPSTREAM_S14E_URL   where the three upstreams live
+#   MIRROR_UBO_URL    MIRROR_CODEMIRROR_URL    MIRROR_S14E_URL     their git.draglabs.com mirrors (push URLs)
+#   MIRROR_PUSH_TOKEN_UBO  MIRROR_PUSH_TOKEN_CODEMIRROR  MIRROR_PUSH_TOKEN_S14E
+#                      one project access token per mirror (write_repository on that mirror only); each Protected AND masked
+#   REFRESH_MIRRORS    "true", set on the pipeline schedule that refreshes the mirrors (the schedule must target main:
+#                      Protected variables are only exposed on protected refs)
+# CI/CD variables for the release job's source publication only (GPLv3, ADR-013; EX-002 (a)):
+#   SNAPSHOT_REPO_URL    https push URL of the public source repo. Protected. It lives only here, never in a tracked
+#                        file, which is what keeps the host out of the repo.
+#   SNAPSHOT_PUSH_TOKEN  a token with write access to that one repo; Protected AND masked.
+# Release: push a chrome-vX.Y.Z tag (protected, ADR-001) -> store zip thankmu_chromium_X.Y.Z.zip as a job artifact,
+#   and the released source published to the public repo (scripts/ci/publish_source_snapshot.sh). Both or neither:
+#   the publish runs before the job ends, so a release whose source did not publish keeps no artifact to submit.
+# Rehearsal: start a pipeline on any branch with the variable RELEASE_DRY_RUN_VERSION=X.Y.Z (UI "Run pipeline", or
+#   glab api -X POST projects/<id>/pipeline -f ref=<branch> -f 'variables[0][key]=RELEASE_DRY_RUN_VERSION' -f 'variables[0][value]=X.Y.Z'
+# ). It runs the same scripts/ci/release_chrome.sh as the tag job, for the store target, and keeps the zip for one day.
+# It never needs a tag, so it is not a release. The variable is not a Settings variable: set it per run only.
+# The docker build image holds node, jq, zip, python3 and rsvg-convert. The ThankMu layer (thankmu/) rebrands the
+# upstream output inside that build; the verify step then re-runs on the runner (python3 only): no upstream marks
+# in anything user-visible, and every blocking file identical to the unpatched upstream build.
+
+stages:
+  - test
+  - build
+  - mirror
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG
+    - if: $RELEASE_DRY_RUN_VERSION && $CI_PIPELINE_SOURCE =~ /^(api|web|trigger)$/
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+script_tests:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+  script:
+    - ./tests/run.sh
+
+build_chrome_mr:
+  stage: build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - chrome_plugin/**/*
+        - thankmu/**/*
+        - scripts/**/*
+        - .nvmrc
+        - .gitlab-ci.yml
+  script:
+    - ./scripts/ci/docker_build_chrome.sh
+    - ./scripts/verify_chrome_package.sh --target dev
+  artifacts:
+    paths:
+      - chrome_plugin/dist/build/uBOLite.chromium/
+    expire_in: 1 week
+
+release_chrome:
+  stage: build
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^chrome-v[0-9]+\.[0-9]+\.[0-9]+$/
+  script:
+    - ./scripts/ci/release_chrome.sh "${CI_COMMIT_TAG#chrome-v}"
+    # GPLv3: the source of the binary is public no later than the binary. Running it here, after the zip
+    # passed its checks and before the job ends, is what couples them: a failed publish fails the job, so
+    # there is no artifact to submit. Re-running the job is safe (an identical published tag is a no-op).
+    - ./scripts/ci/publish_source_snapshot.sh "${CI_COMMIT_TAG#chrome-v}"
+  artifacts:
+    name: "chrome-$CI_COMMIT_TAG"
+    paths:
+      - chrome_plugin/dist/build/thankmu_chromium_*.zip
+    expire_in: never
+
+# Rehearsal of release_chrome without a tag. Same script, same store target, same checks. Manual-source pipelines
+# only (api, web, trigger), never a tag pipeline, and the artifact is named and expires so it cannot pass for a release.
+# The source publication is rehearsed with --dry-run: it builds and verifies the snapshot commit and pushes nothing,
+# so it needs neither the public repo nor a credential.
+release_chrome_dry_run:
+  stage: build
+  rules:
+    - if: $RELEASE_DRY_RUN_VERSION && $CI_PIPELINE_SOURCE =~ /^(api|web|trigger)$/ && $CI_COMMIT_TAG == null
+  script:
+    - echo "DRY RUN of the chrome release path for $RELEASE_DRY_RUN_VERSION (no tag, not a release)"
+    - ./scripts/ci/release_chrome.sh "$RELEASE_DRY_RUN_VERSION"
+    - ./scripts/ci/publish_source_snapshot.sh "$RELEASE_DRY_RUN_VERSION" --dry-run
+  artifacts:
+    name: "chrome-dry-run-$RELEASE_DRY_RUN_VERSION"
+    paths:
+      - chrome_plugin/dist/build/thankmu_chromium_*.zip
+    expire_in: 1 day
+
+refresh_mirrors:
+  stage: mirror
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $REFRESH_MIRRORS == "true"
+  script:
+    - ./scripts/mirror_refresh.sh

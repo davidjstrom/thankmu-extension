@@ -1,0 +1,100 @@
+/* ThankMu design tokens, copied unchanged from the approved design handoff (mockups/docs/handoff/tokens/tokens.css,
+   D6, approved 2026-10-30, design-feedback round 5; --heart-bg from round 6).
+   Handoff sha256 of everything after this comment's end marker:
+   362ba00a5ba1ffa857f008d01831ab77a5042eae20d39cfd524851accbaea241
+   Do not edit the values here: change them in the mockups' tokens, re-export the handoff, and copy the file again.
+   tests/run.sh checks this hash. Components use var(--name) only and never a literal colour.
+   ---- end of ThankMu header; the handoff file follows byte for byte ---- */
+/*
+ * ThankMu design tokens: the one system for plugin, app, site and emails (D6).
+ *
+ * Seeded 2026-10-30 from mkt_website/src/styles/tokens.css ("Clear Morning", W-M5, live on www.dev.thankmu.com).
+ * The light values below are the site's, unchanged. Additions are marked "added". This file is the source of
+ * truth for the system; code repos copy it (see mockups/docs/README.md §Handoff), they never fork the values.
+ *
+ * Contrast is checked by src/system/contrast.mjs (npm run check:contrast) with the site's rules:
+ * text pairs >= 4.5:1, UI and focus >= 3:1. If a choice conflicts with AA, AA wins.
+ */
+:root {
+  /* Palette */
+  --sky: #eef4fa;        /* page background */
+  --white: #ffffff;      /* raised surfaces */
+  --text: #1b2a3b;       /* body text */
+  --muted: #44546a;      /* secondary text */
+  --blue: #165ba8;       /* primary button, links, brand plate */
+  --blue-deep: #0e4380;  /* hover */
+  --on-blue: #ffffff;    /* added: text and glyph on --blue */
+  --sun: #f5c04a;        /* decoration only, never text */
+  --sage: #e1eee6;       /* alternate band */
+  --sage-ink: #1f4a35;   /* text accent on sage, and the sage button */
+  --sage-deep: #163627;  /* sage button hover */
+  --line: #8094a9;       /* borders of controls and step cards */
+  --mist: #b9c8d8;       /* decorative text lines in illustrations */
+  --focus: #a33f00;      /* focus ring */
+  --shadow: rgb(27 42 59 / 0.12); /* open-menu drop shadow */
+  --dev: #a33f00;        /* added: the ThankMu Dev build's plate (icon, popup header). Never on a store build */
+  --alert-bg: #fff4ed;   /* added: error notice background */
+  --alert-ink: #6b2a00;  /* added: error notice text */
+  --heart: #c2185b;      /* added: the heart in the thank-you prompt; the one warm accent, used only for the heart */
+  --heart-bg: #fde7ef;   /* added: the like badge's tint, behind --heart (round 6) */
+  --icon-dev-off: #b98b73; /* added: the Dev build's disabled plate, muted dev orange, so a paused dev install never looks like a paused store one */
+  --icon-off: #9aa0a6;   /* added: disabled toolbar plate; the plugin build's existing value (patch.json) */
+
+  /* Type */
+  --font-sans: "Atkinson Hyperlegible Next", "Atkinson Fallback", -apple-system, "Segoe UI", "Helvetica Neue", Verdana, system-ui, sans-serif;
+  --root-size: 112.5%;   /* 18px */
+  --text-body: 1.1rem;   /* about 19.8px */
+  --text-small: 1rem;    /* 18px, the smallest text on the site */
+  --text-lede: 1.25rem;
+  --text-h1: clamp(2.05rem, 1.4rem + 2.6vw, 3.2rem);
+  --text-h2: clamp(1.7rem, 1.3rem + 1.4vw, 2.3rem);
+  --text-h3: 1.2rem;
+  --text-feature: 1.4rem;
+  --leading: 1.6;
+  --measure: 34rem;      /* ledes and short blocks */
+  --measure-long: 40rem; /* long-form reading */
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.9rem;
+  --space-4: 1.25rem;
+  --space-5: 1.75rem;
+  --space-6: 2.75rem;
+  --space-7: 3.75rem;
+  --gutter: 1.25rem;
+  --wrap: 66rem;
+  --app-max: 64rem;      /* added: the app's desktop width; header, navigation and content share these edges */
+  --target: 2.75rem;     /* minimum touch target */
+
+  /* Shape */
+  --radius-pill: 999px;
+  --radius-card: 1.25rem;
+  --radius-sm: 0.5rem;
+  --border-thick: 3px;
+}
+
+/* added: dark variant. Same names, so components never branch on theme. Applied by .theme-dark (a panel or page)
+   and, where a surface opts in, by prefers-color-scheme. Brand plate stays --brand-plate (Clear Morning blue). */
+.theme-dark {
+  --sky: #0f1a26;
+  --white: #172636;
+  --text: #e8f0f8;
+  --muted: #b4c3d3;
+  --blue: #8fc0f5;
+  --blue-deep: #b9d8fa;
+  --on-blue: #0f1a26;
+  --sage: #16301f;
+  --sage-ink: #a8d5b9;
+  --sage-deep: #c6e6d2;
+  --line: #6f8399;
+  --mist: #3a4d62;
+  --focus: #ffb37a;
+  --alert-bg: #3a1d0c;
+  --alert-ink: #ffd2b0;
+  --shadow: rgb(0 0 0 / 0.4);
+  color-scheme: dark;
+}
+
+/* added: the brand plate never changes with theme; the mark is the same everywhere. */
+:root { --brand-plate: #165ba8; --brand-glyph: #ffffff; }

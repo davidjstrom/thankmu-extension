@@ -1,0 +1,6 @@
+ARG NODE_VERSION
+FROM node:${NODE_VERSION}-bookworm
+# librsvg2-bin: rasterizes the single brand SVG (thankmu/icon.svg) to every toolbar/store PNG at build time.
+# Pinned to the bookworm version; bump it deliberately when Debian moves it. python3 runs the ThankMu patch and verify steps.
+ARG RSVG_VERSION=2.54.7+dfsg-1~deb12u1
+RUN apt-get update && apt-get install -y --no-install-recommends jq zip python3 "librsvg2-bin=${RSVG_VERSION}" && rm -rf /var/lib/apt/lists/*

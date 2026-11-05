@@ -1,0 +1,18 @@
+ThankMu plugins (thankmu_plugins)
+
+chrome_plugin/ is a fork of uBlock Origin (the MV3 "uBlock Origin Lite" build) by
+Raymond Hill and contributors, licensed under the GNU General Public License v3.
+The full licence text is chrome_plugin/LICENSE.txt. Bundled third-party components keep
+their own licences, found next to them (for example
+chrome_plugin/platform/mv3/extension/lib/codemirror/codemirror-ubol/LICENSE and
+chrome_plugin/platform/mv3/extension/lib/s14e-serializer/LICENSE).
+
+ThankMu's own changes to chrome_plugin/ are released under the same GPLv3 terms.
+
+Source availability: the complete corresponding source for each released version of the
+extension is published alongside that release, as one squashed commit tagged chrome-vX.Y.Z
+in the public source repository the extension's About pane offers. That location is
+thankmu/targets.json store.source_url; see ADR-013 "Source publication"
+(docs/architecture/adr-013-plugin-fork-base.md in the ThankMu tracking repo).
+
+The ThankMu API and services are separate, proprietary software and are not part of this repository.

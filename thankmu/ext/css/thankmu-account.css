@@ -1,0 +1,24 @@
+/* The ThankMu account page (W-P3 part B): the pairing screen. Styled from the design tokens only
+   (css/thankmu-tokens.css, linked first by thankmu-account.html): var(--name), never a literal colour. Light by
+   default; .theme-dark (set by js/thankmu/theme.js when the system is dark) is the tokens' own dark. */
+/* Atkinson Hyperlegible Next (SIL OFL 1.1, assets/fonts/OFL.txt), bundled in the package: no font is fetched from the web. */
+@font-face { font-family: "Atkinson Hyperlegible Next"; font-weight: 400; font-style: normal; font-display: swap;
+  src: url("../assets/fonts/atkinson-hyperlegible-next-latin-400.woff2") format("woff2"); }
+@font-face { font-family: "Atkinson Hyperlegible Next"; font-weight: 700; font-style: normal; font-display: swap;
+  src: url("../assets/fonts/atkinson-hyperlegible-next-latin-700.woff2") format("woff2"); }
+html { font-size: var(--root-size); }
+body { margin: 0; padding: var(--space-6) var(--gutter); font-family: var(--font-sans); font-size: var(--text-body);
+  line-height: var(--leading); color: var(--text); background: var(--sky); }
+main { max-width: var(--measure); margin: 0 auto; }
+h1 { font-size: var(--text-h2); line-height: 1.2; margin: var(--space-2) 0 var(--space-4); }
+p { margin: 0 0 var(--space-3); }
+button { font: inherit; font-weight: 700; min-height: var(--target); padding: var(--space-2) var(--space-4); cursor: pointer;
+  border: 2px solid var(--blue); border-radius: var(--radius-pill); background: var(--white); color: var(--blue); }
+button:hover { color: var(--blue-deep); border-color: var(--blue-deep); }
+#pair, #myAccount { background: var(--blue); color: var(--on-blue); }
+#pair:hover, #myAccount:hover { background: var(--blue-deep); color: var(--on-blue); }
+button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.hint { color: var(--muted); font-size: var(--text-small); }
+.error { background: var(--alert-bg); color: var(--alert-ink); border: 2px solid var(--alert-ink); border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3); }
+[hidden] { display: none !important; }
