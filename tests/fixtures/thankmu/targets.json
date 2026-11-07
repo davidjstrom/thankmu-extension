@@ -1,5 +1,5 @@
 {
-  "_doc": "Fixture targets: non-routable .invalid origins; the dev key is the real public dev key (public by nature).",
+  "_doc": "Fixture targets: non-routable .invalid origins; the dev key is the real public dev key (public by nature). The alpha target mirrors the real one's shape -- the store origin with a pinned id of its own -- and reuses the dev key, because a fixture needs no id of its own.",
   "dev": {
     "app_origin": "https://app.dev.example.invalid",
     "manifest_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2V3p6PD+aQsE42bbwlvO0tRa3SzwEpY3xv/PGI7YJOiwkUIAVc+719KpthoUc2RgzTIu3PGimlqKBaDxbV3OHlXdnZs7uccHTpJPfM3jpTrlSSaMNPbxU+Vslq5y3MBQ35Y7lVXfyn0Dj0OTXs9FPT5jWfZDqg7aSlkowuPm4r8J+CRbfqWq4wpJbxb9JfJTI2WfADTL+QMCN8LbhWmQWCFXijHvMDGTuXaRts07h+KT0vFtfrEf91YoTMHbZ/Bn3KtGvCt5eHfqJyoGkkum7DBGnfMZthCA1t/3gJfwF3AvMpfCbK3DBeYyFDemAgKG6W2EH21fZe7Poycr4MV3yQIDAQAB",
@@ -8,5 +8,15 @@
   "store": {
     "app_origin": "https://app.example.invalid",
     "source_url": "https://source.test/thankmu/thankmu-plugin"
+  },
+  "alpha": {
+    "app_origin": "https://app.example.invalid",
+    "manifest_key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2V3p6PD+aQsE42bbwlvO0tRa3SzwEpY3xv/PGI7YJOiwkUIAVc+719KpthoUc2RgzTIu3PGimlqKBaDxbV3OHlXdnZs7uccHTpJPfM3jpTrlSSaMNPbxU+Vslq5y3MBQ35Y7lVXfyn0Dj0OTXs9FPT5jWfZDqg7aSlkowuPm4r8J+CRbfqWq4wpJbxb9JfJTI2WfADTL+QMCN8LbhWmQWCFXijHvMDGTuXaRts07h+KT0vFtfrEf91YoTMHbZ/Bn3KtGvCt5eHfqJyoGkkum7DBGnfMZthCA1t/3gJfwF3AvMpfCbK3DBeYyFDemAgKG6W2EH21fZe7Poycr4MV3yQIDAQAB",
+    "extension_id": "eflkimobbajiadiplpcnjibpodgbblnb",
+    "source_url": "https://source.test/thankmu/thankmu-plugin",
+    "brand": {
+      "name": "Fixture Alpha",
+      "short_name": "Fixture Alpha"
+    }
   }
 }

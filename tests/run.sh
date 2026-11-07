@@ -392,7 +392,7 @@ expect_fail "store target carrying a manifest key fails loudly" "must not carry 
 tq "$RT" "$TMP/t-badid.json" 'd["dev"]["extension_id"]="a"*32';             expect_fail "extension_id that does not match the key fails loudly" "manifest_key gives" -- chk_cfg "$TMP/t-badid.json"
 tq "$RT" "$TMP/t-badkey.json" 'd["dev"]["manifest_key"]="not base64!"';     expect_fail "a malformed manifest key fails loudly" "not valid base64" -- chk_cfg "$TMP/t-badkey.json"
 tq "$RT" "$TMP/t-extra.json" 'd["dev"]["origin"]="x"';                      expect_fail "an unknown target key fails loudly" "unknown keys" -- chk_cfg "$TMP/t-extra.json"
-fresh pt; expect_fail "patch step without target= fails loudly" "target=<dev|store> is required" -- "$PY" -I "$ROOT/thankmu/patch_extension.py" packageDir="$TMP/pt" brand="$FX/thankmu/brand.json" patch="$FX/thankmu/patch.json" targets="$FX/thankmu/targets.json"
+fresh pt; expect_fail "patch step without target= fails loudly" "target=<alpha|dev|store> is required" -- "$PY" -I "$ROOT/thankmu/patch_extension.py" packageDir="$TMP/pt" brand="$FX/thankmu/brand.json" patch="$FX/thankmu/patch.json" targets="$FX/thankmu/targets.json"
 fresh pt; expect_fail "patch step with an unknown target fails loudly" "unknown target 'prod'" -- patch_cmd "$TMP/pt" "" "" prod
 # the dev extension id the app allow-lists (PLUGIN_EXTENSION_IDS) is the one the committed key derives, and the docs say so
 "$PY" -I - "$ROOT" <<'PYE' && ok "dev extension id derives from targets.json dev.manifest_key and is the one docs/rebrand.md names" || bad "dev extension id derives from the key and is documented"
@@ -413,6 +413,52 @@ pk="$(git -C "$ROOT" ls-files -z | xargs -0 grep -l -e 'PRIVATE KEY' -- 2>/dev/n
 fresh pdev; patch_cmd "$TMP/pdev" "" "" dev >"$TMP/pdev.out" 2>&1 && ok "patch step runs for target dev" || bad "patch step runs for target dev" "$(cat "$TMP/pdev.out")"
 fresh pstore; patch_cmd "$TMP/pstore" "" "" store >"$TMP/pstore.out" 2>&1 && ok "patch step runs for target store" || bad "patch step runs for target store" "$(cat "$TMP/pstore.out")"
 grep -q "extension id eflkimobbajiadiplpcnjibpodgbblnb" "$TMP/pdev.out" && grep -q "no manifest key" "$TMP/pstore.out" && ok "patch step reports the target, origin and dev id" || bad "patch step reports the target, origin and dev id" "$(cat "$TMP/pdev.out" "$TMP/pstore.out")"
+
+# The alpha target: the public pre-alpha, released beside the store zip but installed from a file.
+# It is the one package that both points at production AND pins its own id, which is the whole reason
+# it exists -- the app issues a pairing token only to a listed id, and a keyless zip has no stable one.
+"$PY" -I - "$ROOT" <<'PYE' && ok "alpha target: own pinned id, production origin, the store's source offer, its own name" || bad "alpha target is configured as the public pre-alpha"
+import base64, hashlib, json, re, sys
+root = sys.argv[1]
+t = json.load(open(f"{root}/thankmu/targets.json"))
+a, s, d = t["alpha"], t["store"], t["dev"]
+der = base64.b64decode(a["manifest_key"], validate=True)
+eid = "".join(chr(ord("a") + int(c, 16)) for c in hashlib.sha256(der).hexdigest()[:32])
+assert re.fullmatch(r"[a-p]{32}", eid) and eid == a["extension_id"], (eid, a["extension_id"])
+assert a["extension_id"] != d["extension_id"], "the alpha build must not reuse the dev id"
+assert a["app_origin"] == s["app_origin"], (a["app_origin"], s["app_origin"])   # it pairs with production
+assert a["source_url"] == s["source_url"]                                       # one publication, both offers
+brand = json.load(open(f"{root}/thankmu/brand.json"))
+assert a["brand"]["name"] != brand["name"] and a["brand"]["short_name"] != brand["short_name"], a["brand"]
+PYE
+# Whatever RELEASE_TARGETS names, the real config has to define: a tag builds every one of them, and a release
+# that discovers a missing target has already spent the tag.
+"$PY" -I - "$ROOT" <<'PYE' && ok "the real config defines every release target" || bad "the real config defines every release target"
+import importlib.util, json, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("p", f"{sys.argv[1]}/thankmu/patch_extension.py")
+mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+t = mod.load_targets(f"{sys.argv[1]}/thankmu/targets.json")
+missing = [n for n in mod.RELEASE_TARGETS if n not in t]
+assert not missing, f"targets.json defines no {missing}"
+for n in mod.RELEASE_TARGETS:
+    assert t[n].get("source_url"), f"{n} has no source_url"
+PYE
+tq "$RT" "$TMP/t-srcsplit.json" 'd["alpha"]["source_url"]="https://other.example.invalid/x"'
+expect_fail "release targets offering different source repos fail loudly" "must all declare the same one" -- chk_cfg "$TMP/t-srcsplit.json"
+tq "$RT" "$TMP/t-nosrcalpha.json" 'del d["alpha"]["source_url"]'
+expect_fail "alpha target without source_url fails at config check" "must carry the GPLv3 source offer" -- chk_cfg "$TMP/t-nosrcalpha.json" target=alpha
+tq "$RT" "$TMP/t-alphanokey.json" 'del d["alpha"]["manifest_key"]'
+expect_fail "alpha target with an extension_id but no key fails loudly" "without manifest_key" -- chk_cfg "$TMP/t-alphanokey.json"
+fresh palpha; patch_cmd "$TMP/palpha" "" "" alpha "$RT" >"$TMP/palpha.out" 2>&1 && ok "patch step runs for target alpha" || bad "patch step runs for target alpha" "$(cat "$TMP/palpha.out")"
+"$PY" -I - "$TMP/palpha" "$RT" <<'PYE' && ok "alpha package carries the pinned key and the production origin" || bad "alpha package carries the pinned key and the production origin"
+import json, sys
+m = json.load(open(f"{sys.argv[1]}/manifest.json")); a = json.load(open(sys.argv[2]))["alpha"]
+assert m["key"] == a["manifest_key"], "the alpha package must pin its id"
+assert m["externally_connectable"]["matches"] == [a["app_origin"] + "/*"], m["externally_connectable"]
+assert m["short_name"] == a["brand"]["short_name"], m["short_name"]
+PYE
+grep -q "extension id adpddphgffkgjjnibeabbamjlieaofne" "$TMP/palpha.out" && ok "patch step reports the alpha extension id" || bad "patch step reports the alpha extension id" "$(cat "$TMP/palpha.out")"
 "$PY" -I - "$TMP/pdev" "$TMP/pstore" "$FX/thankmu/targets.json" "$FX/pkg" <<'PYE' && ok "dev vs store: manifest keys, externally_connectable, unchanged host permissions, key, generated APP_ORIGIN" || bad "dev vs store: manifest keys, externally_connectable, unchanged host permissions, key, generated APP_ORIGIN"
 import json, os, sys
 dev, store, tp, up = sys.argv[1:5]
@@ -539,14 +585,25 @@ expect_fail "the card's content script must stay top-frame only" "all_frames fal
 expect_fail "a content script must be a layer file" "must list files from layer.files" -- "$PY" -I "$ROOT/thankmu/patch_extension.py" --check-config patch="$TMP/patch-cs-file.json"
 "$PY" -I -c 'import json,sys; d=json.load(open(sys.argv[1])); d["layer"]["content_scripts"][0]["matches"]=["<all_urls>"]; json.dump(d,open(sys.argv[2],"w"))' "$ROOT/thankmu/patch.json" "$TMP/patch-cs-match.json"
 expect_fail "the card's content script runs on http(s) pages only" "http(s) match patterns" -- "$PY" -I "$ROOT/thankmu/patch_extension.py" --check-config patch="$TMP/patch-cs-match.json"
-( cd "$ROOT" && "$PY" -I - ".gitlab-ci.yml" <<'PYE' ) && ok "CI verifies MR builds as target dev and release builds as target store" || bad "CI verifies MR builds as target dev and release builds as target store"
-import sys
+( cd "$ROOT" && "$PY" -I - ".gitlab-ci.yml" <<'PYE' ) && ok "CI verifies MR builds as target dev and release builds every release target" || bad "CI verifies MR builds as target dev and release builds every release target"
+import importlib.util, sys
 ci = open(sys.argv[1]).read()
 mr = ci[ci.index("build_chrome_mr:"):ci.index("release_chrome:")]
 rel = ci[ci.index("release_chrome:"):ci.index("refresh_mirrors:")]
 assert "verify_chrome_package.sh --target dev" in mr, mr
 assert "scripts/ci/release_chrome.sh" in rel, rel
-assert "verify_chrome_package.sh\" --target store" in open("scripts/ci/release_chrome.sh").read()
+# The release script verifies whatever it builds, and it builds the one list of release targets rather
+# than a copy of it: it reads RELEASE_TARGETS, and verifies each entry rather than a hard-coded name.
+rel_sh = open("scripts/ci/release_chrome.sh").read()
+assert "RELEASE_TARGETS" in rel_sh, "release_chrome.sh must take its target list from patch_extension.py"
+assert 'verify_chrome_package.sh" --target "$t"' in rel_sh, rel_sh
+assert 'check_store_zip.py" "$zip"' in rel_sh, rel_sh
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("p", "thankmu/patch_extension.py")
+mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+assert mod.RELEASE_TARGETS == ("store", "alpha"), mod.RELEASE_TARGETS
+# Both packages a tag builds must survive as artifacts, so the glob has to catch the alpha zip too.
+assert "thankmu_chromium_*.zip" in rel, rel
 PYE
 
 echo "== Popup (W-P6): upstream's controls survive the D2 popup =="
@@ -696,7 +753,7 @@ BT="$TMP/bt"; mkdir -p "$BT/scripts" "$BT/thankmu" "$BT/$UBO_PREFIX/tools" "$BT/
 cp "$ROOT"/scripts/*.sh "$ROOT"/scripts/*.py "$BT/scripts/"
 cp "$ROOT/thankmu/patch_extension.py" "$ROOT/thankmu/icon.svg" "$BT/thankmu/"
 cp -R "$ROOT/thankmu/ext" "$BT/thankmu/ext"
-for t in dev store; do mkdir -p "$BT/tests/fixtures/icons/$t"; for f in icon_16 icon_16_off icon_512; do printf PNGSTUB > "$BT/tests/fixtures/icons/$t/$f.png"; done; done   # the stub rasterizer writes PNGSTUB
+for t in dev store alpha; do mkdir -p "$BT/tests/fixtures/icons/$t"; for f in icon_16 icon_16_off icon_512; do printf PNGSTUB > "$BT/tests/fixtures/icons/$t/$f.png"; done; done   # the stub rasterizer writes PNGSTUB
 cp "$FX/thankmu/brand.json" "$FX/thankmu/patch.json" "$FX/thankmu/targets.json" "$BT/thankmu/"
 printf '#!/bin/sh\nrm -rf dist/build/uBOLite.chromium; mkdir -p dist/build; cp -R "%s" dist/build/uBOLite.chromium\nfor a in "$@"; do case "$a" in [0-9]*.[0-9]*.[0-9]*) echo upstream-unpatched > "dist/build/uBOLite_$a.chromium.zip";; esac; done\n' "$FX/pkg" > "$BT/$UBO_PREFIX/tools/make-mv3.sh"
 chmod +x "$BT/$UBO_PREFIX/tools/make-mv3.sh"
@@ -723,6 +780,46 @@ grep -q 'thankmu.svg' "$BT/$UBO_PREFIX/dist/build/thankmu_chromium_1.2.3.zip" &&
 grep -q "thankmu_chromium_1.2.3.zip" "$TMP/b.out" && ok "release build reports the renamed artifact" || bad "release build reports the renamed artifact"
 "$PY" -I -c 'import json,sys; m=json.load(open(sys.argv[1])); t=json.load(open(sys.argv[2]))["store"]; assert "key" not in m and m["externally_connectable"]["matches"]==[t["app_origin"]+"/*"]' "$BT/$UBO_PREFIX/dist/build/uBOLite.chromium/manifest.json" "$BT/thankmu/targets.json" && grep -q "target store" "$TMP/b.out" && ok "release build is the store target (prod origin, no key)" || bad "release build is the store target"
 grep -q 'thankmu-sw.js' "$BT/$UBO_PREFIX/dist/build/thankmu_chromium_1.2.3.zip" && ! grep -q 'test.mjs\|package.json' "$BT/$UBO_PREFIX/dist/build/thankmu_chromium_1.2.3.zip" && ok "release zip carries the ThankMu layer and no tests" || bad "release zip carries the ThankMu layer and no tests"
+
+# Several release targets from ONE upstream build. The count matters, not just the output: filter lists are
+# downloaded while make-mv3.sh runs, so a second upstream build would give the second package a different
+# filter-list snapshot under the same version number.
+cp "$BT/thankmu/targets.json" "$TMP/targets-1t.keep"
+"$PY" -I -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+d["alpha"]={"app_origin": d["store"]["app_origin"], "manifest_key": d["dev"]["manifest_key"],
+            "extension_id": d["dev"]["extension_id"], "source_url": d["store"]["source_url"],
+            "brand": {"name": "Fixture Alpha", "short_name": "Fixture Alpha"}}
+json.dump(d,open(sys.argv[1],"w"))' "$BT/thankmu/targets.json"
+MVRUNS="$TMP/mvruns"; : > "$MVRUNS"
+cp "$BT/$UBO_PREFIX/tools/make-mv3.sh" "$TMP/mk-1t.keep"
+printf '#!/bin/sh\necho run >> "%s"\nrm -rf dist/build/uBOLite.chromium; mkdir -p dist/build; cp -R "%s" dist/build/uBOLite.chromium\nfor a in "$@"; do case "$a" in [0-9]*.[0-9]*.[0-9]*) echo upstream-unpatched > "dist/build/uBOLite_$a.chromium.zip";; esac; done\n' "$MVRUNS" "$FX/pkg" > "$BT/$UBO_PREFIX/tools/make-mv3.sh"
+chmod +x "$BT/$UBO_PREFIX/tools/make-mv3.sh"
+env -u CI -u BUILDS_KEEP PATH="$TMP/fakebin:$PATH" FAKE_NODE_MAJOR=22 BUILD_SHORTSHA=abc1234 "$BT/scripts/build_chrome.sh" 1.2.4 store alpha >"$TMP/b2.out" 2>&1 && ok "release build of two targets succeeds" || bad "release build of two targets succeeds" "$(tail -8 "$TMP/b2.out")"
+[ "$(wc -l < "$MVRUNS")" = 1 ] && ok "two release targets share one upstream build" || bad "two release targets share one upstream build" "$(wc -l < "$MVRUNS") upstream build(s)"
+[ -s "$BT/$UBO_PREFIX/dist/build/thankmu_chromium_1.2.4.zip" ] && [ -s "$BT/$UBO_PREFIX/dist/build/thankmu_chromium_alpha_1.2.4.zip" ] && ok "store keeps the plain zip name and another target names itself" || bad "store keeps the plain zip name and another target names itself" "$(ls "$BT/$UBO_PREFIX/dist/build/")"
+"$PY" -I - "$BT/$UBO_PREFIX/dist/build" "$BT/thankmu/targets.json" <<'PYE' && ok "each release target gets its own package, patched from the same pristine output" || bad "each release target gets its own package, patched from the same pristine output"
+import json, sys
+b, t = sys.argv[1], json.load(open(sys.argv[2]))
+st = json.load(open(f"{b}/uBOLite.chromium.store/manifest.json"))
+al = json.load(open(f"{b}/uBOLite.chromium.alpha/manifest.json"))
+assert "key" not in st, "the store package must not pin an id"
+assert al["key"] == t["alpha"]["manifest_key"], "the alpha package must pin its id"
+assert st["externally_connectable"]["matches"] == [t["store"]["app_origin"] + "/*"], st["externally_connectable"]
+assert al["externally_connectable"]["matches"] == [t["alpha"]["app_origin"] + "/*"], al["externally_connectable"]
+assert al["short_name"] == t["alpha"]["brand"]["short_name"], al["short_name"]
+# The canonical build output still holds the first target's package, which is what a store submission reads.
+assert "key" not in json.load(open(f"{b}/uBOLite.chromium/manifest.json"))
+# The pristine baseline is untouched by either patch.
+assert json.load(open(f"{b}/uBOLite.chromium.unpatched/manifest.json"))["short_name"] == "uBO Lite"
+PYE
+grep -q "target store" "$TMP/b2.out" && grep -q "target alpha" "$TMP/b2.out" && ok "a two-target release build reports both targets" || bad "a two-target release build reports both targets" "$(tail -8 "$TMP/b2.out")"
+# Every requested target's config is checked before the (slow) upstream build, not just the first one, so a
+# release that could not build its second package fails before the first zip exists.
+: > "$MVRUNS"
+expect_fail "an unknown release target fails before the upstream build" "unknown target 'nope'" -- env -u CI -u BUILDS_KEEP PATH="$TMP/fakebin:$PATH" FAKE_NODE_MAJOR=22 BUILD_SHORTSHA=abc1234 "$BT/scripts/build_chrome.sh" 1.2.5 store nope
+[ ! -s "$MVRUNS" ] && ok "a bad second target stops the build before any upstream build runs" || bad "a bad second target stops the build before any upstream build runs" "$(wc -l < "$MVRUNS") upstream build(s)"
+cp "$TMP/mk-1t.keep" "$BT/$UBO_PREFIX/tools/make-mv3.sh"; cp "$TMP/targets-1t.keep" "$BT/thankmu/targets.json"
 cp "$BT/thankmu/brand.json" "$TMP/brand.keep"; rm "$BT/thankmu/brand.json"
 expect_fail "build fails loudly without thankmu/brand.json" "ThankMu layer file missing" -- build_with 22
 "$PY" -I -c 'import json,sys; d=json.load(open(sys.argv[1])); del d["name"]; json.dump(d,open(sys.argv[2],"w"))' "$TMP/brand.keep" "$BT/thankmu/brand.json"
@@ -741,6 +838,8 @@ nvmrc '';            expect_fail ".nvmrc empty fails loudly" "does not start wit
 nvmrc $'abc\n';     expect_fail ".nvmrc abc fails loudly" "does not start with a node major version" -- build_with 22
 rm -f "$BT/.nvmrc";  expect_fail ".nvmrc missing fails loudly" ".nvmrc missing" -- build_with 22
 expect_fail "build rejects bad version" "version" -- "$ROOT/scripts/build_chrome.sh" notaversion
+expect_fail "build rejects a target named without a version" "a target can only be named for a release build" -- "$ROOT/scripts/build_chrome.sh" "" alpha
+expect_fail "build rejects a target named twice" "named twice" -- "$ROOT/scripts/build_chrome.sh" 1.2.3 store store
 
 echo "== release path (scripts/ci/release_chrome.sh, check_store_zip.py, CI jobs) =="
 # The real release script against the build tree above, with the docker step replaced by a stub that runs
@@ -761,12 +860,18 @@ expect_fail "release script rejects a tag-shaped version" "usage: release_chrome
 expect_fail "release script rejects a non-semver version" "usage: release_chrome.sh X.Y.Z" -- release 1.2
 release 1.2.3 >"$TMP/r.out" 2>&1 && ok "release script runs build, verify and zip check end to end" || bad "release script runs build, verify and zip check end to end" "$(tail -8 "$TMP/r.out")"
 grep -q "brand scan ok" "$TMP/r.out" && grep -q "blocking unchanged" "$TMP/r.out" && grep -q "store zip ok" "$TMP/r.out" && grep -q "Release path ok for 1.2.3" "$TMP/r.out" && ok "release script reports verify and zip-check results" || bad "release script reports verify and zip-check results" "$(tail -8 "$TMP/r.out")"
+# One tag, both packages: the release script checks the alpha zip the same way and reports it too.
+grep -q "alpha zip ok" "$TMP/r.out" && ok "release script checks the alpha zip as well as the store zip" || bad "release script checks the alpha zip as well as the store zip" "$(tail -8 "$TMP/r.out")"
+[ -s "$BT/$UBO_PREFIX/dist/build/thankmu_chromium_alpha_1.2.3.zip" ] && ok "release script leaves the alpha zip beside the store zip" || bad "release script leaves the alpha zip beside the store zip" "$(ls "$BT/$UBO_PREFIX/dist/build/")"
+grep -q "extension id adpddphgffkgjjnibeabbamjlieaofne\|extension id $("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["alpha"]["extension_id"])' "$BT/thankmu/targets.json")" "$TMP/r.out" \
+  && ok "release log records the alpha extension id (the one PLUGIN_EXTENSION_IDS must list)" || bad "release log records the alpha extension id" "$(tail -8 "$TMP/r.out")"
 RZ="$BT/$UBO_PREFIX/dist/build/thankmu_chromium_1.2.3.zip"
+RZA="$BT/$UBO_PREFIX/dist/build/thankmu_chromium_alpha_1.2.3.zip"
 CSZ="$ROOT/scripts/check_store_zip.py"
 [ -s "$RZ" ] && "$PY" -I -c 'import zipfile,sys; assert zipfile.ZipFile(sys.argv[1]).testzip() is None' "$RZ" && ok "release script leaves a readable store zip" || bad "release script leaves a readable store zip"
 # check_store_zip.py on crafted zips: take the good manifest and break one thing at a time.
-mkzip() { # <out> <jq-less python expr mutating dict m> [extra member name]
-  "$PY" -I - "$RZ" "$1" "$2" "${3:-}" <<'PYEOF'
+mkzip() { # <out> <jq-less python expr mutating dict m> [extra member name]; source zip is $SRCZ (the store zip)
+  "$PY" -I - "${SRCZ:-$RZ}" "$1" "$2" "${3:-}" <<'PYEOF'
 import json, sys, zipfile
 src, out, mut, extra = sys.argv[1:5]
 zi = zipfile.ZipFile(src); zo = zipfile.ZipFile(out, "w")
@@ -798,6 +903,19 @@ printf 'not a zip' > "$TMP/bad.zip";                             expect_fail "st
 expect_fail "store zip check rejects a manifest not at the root" "not at the zip root" -- "$PY" -I "$CSZ" "$TMP/nested.zip" "$TG" 1.2.3
 "$PY" -I -c 'import json,sys; d=json.load(open(sys.argv[1])); d["store"]["manifest_key"]="AAAA"; json.dump(d,open(sys.argv[2],"w"))' "$TG" "$TMP/tg-key.json"
 expect_fail "store zip check rejects a store target that pins a key" "manifest_key" -- "$PY" -I "$CSZ" "$TMP/good.zip" "$TMP/tg-key.json" 1.2.3
+# The alpha zip gets the same checks with the id requirement inverted: it MUST carry the pinned key, because it
+# is installed from a file and an unpinned build gets a fresh id per machine and can never pair.
+"$PY" -I "$CSZ" "$RZA" "$TG" 1.2.3 alpha >/dev/null 2>&1 && ok "alpha zip check accepts the built alpha zip" || bad "alpha zip check accepts the built alpha zip" "$("$PY" -I "$CSZ" "$RZA" "$TG" 1.2.3 alpha 2>&1 | tail -3)"
+SRCZ="$RZA"
+mkzip "$TMP/a-nokey.zip" "del m['key']"
+expect_fail "alpha zip check rejects a zip with no pinned key" "carries no 'key'" -- "$PY" -I "$CSZ" "$TMP/a-nokey.zip" "$TG" 1.2.3 alpha
+mkzip "$TMP/a-wrongkey.zip" "m['key']='AAAA'"
+expect_fail "alpha zip check rejects a zip pinning the wrong key" "is not targets.json alpha.manifest_key" -- "$PY" -I "$CSZ" "$TMP/a-wrongkey.zip" "$TG" 1.2.3 alpha
+SRCZ="$RZ"
+# The two packages of one release are not interchangeable, in either direction.
+expect_fail "the store zip is refused as an alpha zip (no pinned key)" "carries no 'key'" -- "$PY" -I "$CSZ" "$RZ" "$TG" 1.2.3 alpha
+expect_fail "the alpha zip is refused as a store zip (it pins a key)" "carries a 'key'" -- "$PY" -I "$CSZ" "$RZA" "$TG" 1.2.3
+expect_fail "zip check rejects an unknown target" "unknown target" -- "$PY" -I "$CSZ" "$RZ" "$TG" 1.2.3 nope
 # A failing verify step must fail the release script (the store zip would otherwise ship unchecked).
 cp "$BT/scripts/verify_chrome_package.sh" "$TMP/verify.keep"; printf '#!/bin/sh\necho verify-boom >&2\nexit 1\n' > "$BT/scripts/verify_chrome_package.sh"
 expect_fail "a build whose verification fails fails the release" "verify-boom" -- release 1.2.4
@@ -829,8 +947,16 @@ rel, dry = job("release_chrome"), job("release_chrome_dry_run")
 assert './scripts/ci/publish_source_snapshot.sh "${CI_COMMIT_TAG#chrome-v}"' in rel, "release job does not publish"
 assert "--dry-run" not in rel, "the release job must really publish"
 assert './scripts/ci/publish_source_snapshot.sh "$RELEASE_DRY_RUN_VERSION" --dry-run' in dry, "dry run does not rehearse"
-# Publishing comes after the release script in the same job: the zip has passed its checks by then.
-assert rel.index("release_chrome.sh") < rel.index("publish_source_snapshot.sh")
+# Order inside the release job. Publishing comes after the release script: the zip has passed its
+# checks by then, which is the coupling. The publish step's *configuration* is checked before the
+# build instead, because a refusal after the zip exists discards the artifact and spends the tag.
+cmds = [l.strip()[2:].strip() for l in rel.splitlines() if l.strip().startswith("- ")]
+pub = './scripts/ci/publish_source_snapshot.sh "${CI_COMMIT_TAG#chrome-v}"'
+build = './scripts/ci/release_chrome.sh "${CI_COMMIT_TAG#chrome-v}"'
+assert pub in cmds, "the release job must publish with no flag"
+assert f"{pub} --preflight" in cmds, "the release job must preflight the publish configuration"
+assert cmds.index(f"{pub} --preflight") < cmds.index(build) < cmds.index(pub), \
+    "preflight must run before the build, and the real publish after it"
 # Both variables the publish needs are documented in the file's header, so nobody has to read the script to set them.
 assert "SNAPSHOT_REPO_URL" in t and "SNAPSHOT_PUSH_TOKEN" in t
 PYEOF
@@ -845,6 +971,28 @@ assert "RELEASE_DRY_RUN_VERSION" not in rel and "expire_in: never" in rel
 # the workflow admits the dry-run pipeline, and only with the same guard
 wf = re.search(r"^workflow:\n((?:[ ].*\n)*)", t, re.M).group(1)
 assert "$RELEASE_DRY_RUN_VERSION && $CI_PIPELINE_SOURCE =~ /^(api|web|trigger)$/" in wf
+PYEOF
+# W-P4 items 4/9/U3: the screenshot job runs the two commands a person would run, and only by hand.
+# "Manual" is the whole safety property -- it drives a real browser and its output is committed by a
+# person -- so it is asserted here rather than left to whoever next edits the rules.
+"$PY" -I - "$CI_YML" <<'PYEOF' && ok "CI: the screenshot job is manual only, never automatic, and keeps the PNGs" || bad "CI: the screenshot job is manual only, never automatic, and keeps the PNGs"
+import re, sys
+t = open(sys.argv[1]).read()
+shots = re.search(r"^screenshots:\n((?:[ ].*\n|\n)*)", t, re.M).group(1)
+cmds = [l.strip()[2:].strip() for l in shots.splitlines() if l.strip().startswith("- ./")]
+assert cmds == ["./scripts/ci/docker_build_chrome.sh", "./store/screenshots/generate.sh"], cmds
+rules = shots[shots.index("rules:"):shots.index("script:")]
+# Every arm either refuses the pipeline or waits for a person. One arm that forgot "when:" would
+# default to on_success, which is this job running on every push to main.
+arms = [l.strip() for l in rules.splitlines() if l.strip().startswith("when:")]
+assert arms and all(a in ("when: never", "when: manual") for a in arms), arms
+assert len([l for l in rules.splitlines() if l.strip().startswith("- if:")]) == len(arms), rules
+assert "when: manual" in rules and "allow_failure: true" in shots
+# A release must not be able to reach it: not on a tag, not on a rehearsal, and not on a schedule.
+for guard in ("$CI_COMMIT_TAG", "$CI_PIPELINE_SOURCE == \"schedule\"", "$RELEASE_DRY_RUN_VERSION"):
+    arm = re.search(r"- if: %s\n\s+when: (\w+)" % re.escape(guard), rules)
+    assert arm and arm.group(1) == "never", guard
+assert "store/screenshots/*.png" in shots and "expire_in" in shots
 PYEOF
 # W-P4: the real release path stops at the About source-offer gate, before the upstream build, without store.source_url.
 cp "$BT/thankmu/targets.json" "$TMP/targets.rel.keep"; "$PY" -I -c 'import json,sys; d=json.load(open(sys.argv[1])); del d["store"]["source_url"]; json.dump(d,open(sys.argv[1],"w"))' "$BT/thankmu/targets.json"
@@ -872,11 +1020,104 @@ done
 expect_fail "publish refuses a non-https snapshot URL" "must be an https URL" -- \
   env SNAPSHOT_REPO_URL=http://elsewhere.test/s.git SNAPSHOT_PUSH_TOKEN=x "$PS" 1.2.3
 
+# W-P4 item 10: the repo CI pushes to (SNAPSHOT_REPO_URL, a CI variable) and the repo the shipped
+# package offers the source at (store.source_url) must be one repo. Nothing compared them before, and
+# neither half can see the other, so a disagreement published the source where no reader is ever sent.
+CS="$ROOT/scripts/check_snapshot_repo_url.py"
+stu() { "$PY" -I -c 'import json,sys; json.dump({"store":{"source_url":sys.argv[1]}} if sys.argv[1] else {"store":{}}, open(sys.argv[2],"w"))' "$1" "$TMP/snap-t.json"; }
+cs() { env SNAPSHOT_REPO_URL="$1" "$PY" -I "$CS" "$TMP/snap-t.json"; }
+# One repo, spelled every way the two sides legitimately differ: the push URL carries ".git", the
+# offer does not; either may carry a trailing slash; host case and "www." never change the repo.
+# These must all pass, because a false alarm here fails the release job after the zip is built.
+stu "https://src.test/thankmu/source"
+for u in https://src.test/thankmu/source.git https://src.test/thankmu/source \
+         https://src.test/thankmu/source/ https://SRC.test/thankmu/Source.git \
+         https://www.src.test/thankmu/source.git http://src.test/thankmu/source.git; do
+  cs "$u" >/dev/null && ok "snapshot target: '$u' is the same repo as the offer" \
+    || bad "snapshot target: '$u' is the same repo as the offer" "$(cs "$u" 2>&1)"
+done
+# A genuinely different repo is the whole point, and the message has to name both sides.
+expect_fail "snapshot target: another repo on the same host is refused" "source offer does not point" -- \
+  env SNAPSHOT_REPO_URL=https://src.test/thankmu/other.git "$PY" -I "$CS" "$TMP/snap-t.json"
+expect_fail "snapshot target: another host is refused" "source offer does not point" -- \
+  env SNAPSHOT_REPO_URL=https://elsewhere.test/thankmu/source.git "$PY" -I "$CS" "$TMP/snap-t.json"
+expect_fail "snapshot target: another owner on the same host is refused" "source offer does not point" -- \
+  env SNAPSHOT_REPO_URL=https://src.test/someone-else/source.git "$PY" -I "$CS" "$TMP/snap-t.json"
+expect_fail "snapshot target: a URL naming a host but no repo is refused" "no repository" -- \
+  env SNAPSHOT_REPO_URL=https://src.test/ "$PY" -I "$CS" "$TMP/snap-t.json"
+expect_fail "snapshot target: an unset variable is refused" "is not set" -- \
+  env -u SNAPSHOT_REPO_URL "$PY" -I "$CS" "$TMP/snap-t.json"
+# No offer to check against: a store release cannot happen without one, so this is an error, never a skip.
+stu ""
+expect_fail "snapshot target: a targets.json with no store.source_url is refused" "no store.source_url" -- \
+  env SNAPSHOT_REPO_URL=https://src.test/thankmu/source.git "$PY" -I "$CS" "$TMP/snap-t.json"
+printf '{"store": {"source_url": "https://src.test/x"' > "$TMP/snap-t.json"
+expect_fail "snapshot target: a targets.json that is not valid JSON is refused" "not valid JSON" -- \
+  env SNAPSHOT_REPO_URL=https://src.test/x.git "$PY" -I "$CS" "$TMP/snap-t.json"
+# A credential accidentally left in SNAPSHOT_REPO_URL is tolerated by the comparison -- userinfo is
+# ignored, so it cannot cause a false alarm -- and must therefore never be printed. The variable is
+# Protected but not masked, and every message here goes to the job log, which outlives the job. Each
+# failure path that prints a URL is covered, because the one that leaks is whichever was forgotten.
+stu "https://src.test/thankmu/source"
+for case in \
+  "a mismatch|https://user:secret@src.test/thankmu/other.git" \
+  "a host with no repo|https://user:secret@src.test/" \
+  "an unusable port|https://user:secret@src.test:notaport/thankmu/other.git" \
+  "a URL with no scheme|user:secret@src.test/thankmu/other.git" \
+  "a URL urlsplit rejects|https://[user:secret@src.test/x.git"; do
+  name="snapshot target: ${case%%|*} is refused without printing the credential"
+  out="$(cs "${case#*|}" 2>&1)"; rc=$?
+  if [ $rc -eq 0 ]; then bad "$name" "expected failure, got success"
+  elif grep -q "secret" <<<"$out"; then bad "$name" "the credential reached the output"
+  elif ! grep -q '[*][*][*]@src[.]test' <<<"$out"; then bad "$name" "the message does not name the host: $out"
+  else ok "$name"; fi
+done
+# ...and it must not turn an otherwise-correct pair into a failure at the end of the release job.
+cs "https://oauth2:secret@src.test/thankmu/source.git" >/dev/null 2>&1 \
+  && ok "snapshot target: userinfo in the variable is not itself a mismatch" \
+  || bad "snapshot target: userinfo in the variable is not itself a mismatch" "refused a matching pair"
+
+# The real pair, as configured: whatever the CI variable says, it must agree with the tracked field.
+# Checked here against the repo's own targets.json so a mismatch cannot reach a tag.
+cs_real() { env SNAPSHOT_REPO_URL="$1" "$PY" -I "$CS" "$ROOT/thankmu/targets.json"; }
+RSRC="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["store"].get("source_url") or "")' "$RT")"
+if [ -n "$RSRC" ]; then
+  cs_real "$RSRC.git" >/dev/null && ok "snapshot target: the real store.source_url matches its own push URL spelling" \
+    || bad "snapshot target: the real store.source_url matches its own push URL spelling" "$(cs_real "$RSRC.git" 2>&1)"
+else
+  ok "snapshot target: the real config has no source_url yet (nothing to compare)"
+fi
+
+# --preflight: these same checks, run before the build instead of after it. Every one of them would
+# otherwise first be reached at the end of the release job, with the zip already built, where a
+# refusal discards the artifact and spends the tag. It must touch no git repository.
+if [ -n "$RSRC" ]; then
+  out="$(env SNAPSHOT_REPO_URL="$RSRC.git" SNAPSHOT_PUSH_TOKEN=x "$PS" 1.2.3 --preflight 2>&1)" \
+    && grep -q "preflight ok" <<<"$out" && ok "preflight passes on the real configuration" \
+    || bad "preflight passes on the real configuration" "$out"
+  grep -qE "^>> source snapshot of" <<<"$out" && bad "preflight builds nothing and publishes nothing" "$out" \
+    || ok "preflight builds nothing and publishes nothing"
+  expect_fail "preflight fails without the push token, before any build" "SNAPSHOT_PUSH_TOKEN" -- \
+    env -u SNAPSHOT_PUSH_TOKEN SNAPSHOT_REPO_URL="$RSRC.git" "$PS" 1.2.3 --preflight
+  expect_fail "preflight fails when the snapshot target disagrees with the offer" "source offer does not point" -- \
+    env SNAPSHOT_REPO_URL=https://elsewhere.test/someone/source.git SNAPSHOT_PUSH_TOKEN=x "$PS" 1.2.3 --preflight
+fi
+expect_fail "preflight and dry-run cannot be combined" "mutually exclusive" -- "$PS" 1.2.3 --preflight --dry-run
+# A rehearsal that has the variable checks the agreement too, and refuses before building the tree:
+# with no tag in existence yet, that is the cheapest place a mismatch can possibly be caught.
+expect_fail "a dry run with a disagreeing snapshot target fails" "source offer does not point" -- \
+  env SNAPSHOT_REPO_URL=https://elsewhere.test/someone/source.git "$PS" 1.2.3 --dry-run
+
 # A dry run over this very repo: no credential, no network, and it names the tree it would publish. This is what
 # the release_chrome_dry_run job rehearses, so the real tree is exercised on every rehearsal.
 out="$(env -u SNAPSHOT_REPO_URL -u SNAPSHOT_PUSH_TOKEN "$PS" 9.9.9 --dry-run 2>&1)" \
   && grep -q "Nothing was pushed" <<<"$out" && ok "a dry run over this repo needs no credential and pushes nothing" \
   || bad "a dry run over this repo needs no credential and pushes nothing" "$out"
+# With no variable there is nothing to compare the offer against. It says so, rather than passing in
+# silence: a skipped check that reads like a passed one is how the mismatch stayed invisible.
+grep -q "SNAPSHOT_REPO_URL is not set, so the source offer was not checked" <<<"$out" \
+  && ok "a dry run without the variable says the offer was not checked against it" \
+  || bad "a dry run without the variable says the offer was not checked against it" "$out"
 SNAP_TREE="$(sed -n 's/^>> tree \([0-9a-f]\{40\}\):.*/\1/p' <<<"$out")"
 if [ -z "$SNAP_TREE" ]; then bad "the dry run names the tree it would publish" "$out"; else
   ok "the dry run names the tree it would publish"
@@ -902,6 +1143,16 @@ if [ -z "$SNAP_TREE" ]; then bad "the dry run names the tree it would publish" "
   grep -qiE "premium-ab|minorrepo|majorrepo|git\.draglabs\.com" "$TMP/snap-readme.md" \
     && bad "the generated README names no private repo or host" \
     || ok "the generated README names no private repo or host"
+  # One tag publishes this source once, and it is the corresponding source of every package that tag
+  # builds. The front page has to say so, or the alpha zip carries a licence offer pointing at a page
+  # that only admits to the store zip.
+  SNAP_PKG="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["package_name"])' "$ROOT/thankmu/brand.json")"
+  snap_missing=""
+  for z in "${SNAP_PKG}_9.9.9.zip" "${SNAP_PKG}_alpha_9.9.9.zip"; do
+    grep -qF "$z" "$TMP/snap-readme.md" || snap_missing="$snap_missing $z"
+  done
+  [ -z "$snap_missing" ] && ok "the generated README names every package the tag builds" \
+    || bad "the generated README names every package the tag builds" "missing:$snap_missing"
 fi
 
 # The push itself, against the same fake authenticated git server the mirror job uses, from a small fixture release
@@ -910,10 +1161,16 @@ SFX="$TMP/snapfix"
 mkdir -p "$SFX/scripts/ci" "$SFX/chrome_plugin/platform/mv3/chromium" "$SFX/thankmu" "$SFX/docs" "$SFX/store" "$SFX/builds"
 cp "$ROOT/scripts/lib.sh" "$SFX/scripts/"
 cp "$ROOT/scripts/ci/publish_source_snapshot.sh" "$SFX/scripts/ci/"
+# The publish script calls this one to compare the push URL with the shipped source offer, so the
+# fixture release tree needs it too (it resolves it under its own root, not this repo's).
+cp "$ROOT/scripts/check_snapshot_repo_url.py" "$SFX/scripts/"
+# The generated README names every package the tag builds, and reads that list from the one place it
+# is defined, so the fixture needs the real module and not a stub of it.
+cp "$ROOT/thankmu/patch_extension.py" "$SFX/thankmu/"
 cp "$ROOT/thankmu/brand.json" "$SFX/thankmu/"
 chmod +x "$SFX/scripts/ci/publish_source_snapshot.sh"
 for f in scripts/build_chrome.sh scripts/verify_chrome_package.sh scripts/ci/docker_build_chrome.sh \
-         scripts/ci/Dockerfile.chrome-build thankmu/patch.json thankmu/patch_extension.py thankmu/targets.json \
+         scripts/ci/Dockerfile.chrome-build thankmu/patch.json thankmu/targets.json \
          chrome_plugin/LICENSE.txt chrome_plugin/platform/mv3/chromium/manifest.json NOTICE .nvmrc .gitlab-ci.yml; do
   printf 'stub: %s\n' "$f" > "$SFX/$f"
 done
@@ -929,6 +1186,16 @@ trap 'kill $SRV $SRV2 2>/dev/null; rm -rf "$TMP"' EXIT
 for _ in $(seq 50); do [ -s "$TMP/port2" ] && break; sleep 0.1; done
 SNAP_URL="http://127.0.0.1:$(cat "$TMP/port2")/snapshot.git"
 SR="$TMP/srv/snapshot.git"
+# The publish step now checks SNAPSHOT_REPO_URL against store.source_url, so the fixture needs a real
+# targets.json naming this server. It is written the way the *field* is spelled, not the way the
+# *variable* is -- no ".git", with a trailing slash -- so every push below also exercises the
+# normalisation that lets one repo be spelled two ways (the real pair differs exactly like this).
+snap_targets() { # $1 = marker, so a later release has a different tree; $2 = source_url override
+  "$PY" -I -c 'import json,sys; json.dump({"_fixture": sys.argv[2], "store": {"source_url": sys.argv[1]}}, open(sys.argv[3], "w"))' \
+    "${2:-${SNAP_URL%.git}/}" "$1" "$SFX/thankmu/targets.json"
+}
+snap_targets "release one"
+( cd "$SFX" && git add -A && gq commit -qm "targets for the snapshot fixture" )
 publish() { # <token> <args...>
   local tok="$1"; shift
   env -i PATH="$PATH" HOME="$TMP" SNAPSHOT_REPO_URL="$SNAP_URL" SNAPSHOT_PUSH_TOKEN="$tok" \
@@ -967,7 +1234,7 @@ out="$(publish $T_SNAP 1.3.0 --dry-run)" || bad "a dry run with the credential p
 [ "$(git -C "$SR" rev-parse refs/heads/main)" = "$before" ] && grep -q "Nothing was pushed" <<<"$out" \
   && ok "a dry run pushes nothing even with the credential present" || bad "a dry run pushes nothing even with the credential present" "$out"
 # The next release is one more commit on top of the last, so the public side is a list of releases and nothing else.
-( cd "$SFX" && printf 'release two\n' > thankmu/targets.json && git add -A && gq commit -qm r2 )
+( cd "$SFX" && snap_targets "release two" && git add -A && gq commit -qm r2 )
 out="$(publish $T_SNAP 1.1.0)" || bad "publishing a second release succeeds" "$out"
 [ "$(git -C "$SR" rev-list --count refs/heads/main)" = 2 ] && ok "the second release adds exactly one commit" \
   || bad "the second release adds exactly one commit" "$(git -C "$SR" rev-list --count refs/heads/main)"

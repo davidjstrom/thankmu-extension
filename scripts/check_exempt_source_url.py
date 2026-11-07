@@ -1,23 +1,34 @@
 #!/usr/bin/env python3
-"""EX-002 (a): in thankmu/targets.json, store.source_url is the one place a given host may appear.
+"""EX-002 (a): in thankmu/targets.json, the release targets' source_url is the only place a given host may appear.
 
 Usage: check_exempt_source_url.py <targets.json> <host>
 
 The GPLv3 source offer has to name the public source location (W-P4 item 9), and that location is on
 a host this project otherwise never references: development is on git.draglabs.com only, and the one
 public repo there is a distribution channel, not a development host (EX-002 (a); ADR-013 "Source
-publication"). The exemption is that one field, not the file. So every occurrence of <host> in the
-file must sit inside the value of store.source_url and nowhere else: not in _doc, not in a key, not
-in another target's source_url. The host is an argument rather than a constant here so that naming it
-does not put it in a project-owned file, which is the rest of the rule (tests/run.sh "repo hygiene").
+publication"). The exemption is those fields, not the file. So every occurrence of <host> in the
+file must sit inside the source_url of a target a release tag publishes -- store and alpha, both
+distributed to the public, both carrying the offer -- and nowhere else: not in _doc, not in a key,
+not in the source_url of a target that is never published (dev). The host is an argument rather than
+a constant here so that naming it does not put it in a project-owned file, which is the rest of the
+rule (tests/run.sh "repo hygiene").
+
+Those two fields must hold the same URL anyway (one tag publishes the source once); that is enforced
+in thankmu/patch_extension.py load_targets, where the whole config is validated. This file is only
+about where the host is allowed to be written down.
 
 Prints nothing and exits 0 when the rule holds; exits 1 with the offending locations otherwise.
 """
 import json
 import sys
 
-EXEMPT = ("store", "source_url")
-EXEMPT_PATH = ".".join(EXEMPT)
+# The targets a chrome-vX.Y.Z tag builds and publishes; kept in step with RELEASE_TARGETS in
+# thankmu/patch_extension.py. Not imported from there: this check is run by the repo-hygiene scan on
+# a targets file alone and stays free of the patch step's imports.
+EXEMPT_TARGETS = ("store", "alpha")
+FIELD = "source_url"
+EXEMPT_PATHS = tuple(f"{t}.{FIELD}" for t in EXEMPT_TARGETS)
+EXEMPT_PATH = " or ".join(EXEMPT_PATHS)
 
 
 def fail(msg):
@@ -55,13 +66,17 @@ def main(argv):
     if not isinstance(doc, dict):
         fail(f"{path} must be a JSON object of targets")
 
-    target = doc.get(EXEMPT[0])
-    exempt = target.get(EXEMPT[1]) if isinstance(target, dict) else None
-    allowed = exempt.lower().count(host) if isinstance(exempt, str) else 0
+    # Every exempt field that is actually present; a release target the file does not define contributes nothing.
+    allowed = 0
+    for name in EXEMPT_TARGETS:
+        target = doc.get(name)
+        value = target.get(FIELD) if isinstance(target, dict) else None
+        if isinstance(value, str):
+            allowed += value.lower().count(host)
     if total == allowed:
         return
 
-    others = sorted({p for p, s in walk(doc) if host in s.lower()} - {EXEMPT_PATH})
+    others = sorted({p for p, s in walk(doc) if host in s.lower()} - set(EXEMPT_PATHS))
     where = ", ".join(others) if others else "in a key or outside any string value"
     fail(
         f"{path}: that host is permitted in {EXEMPT_PATH} only (EX-002 (a)); "

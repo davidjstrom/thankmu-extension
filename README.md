@@ -3,7 +3,8 @@
 The complete corresponding source of each released ThankMu browser extension, published to
 meet the GNU General Public License, version 3.
 
-**This release:** 1.0.0 (store package `thankmu_chromium_1.0.0.zip`, tag `chrome-v1.0.0`).
+**This release:** 1.1.0, tag `chrome-v1.1.0`. It is the corresponding source of every package that
+release builds: `thankmu_chromium_1.1.0.zip`, `thankmu_chromium_alpha_1.1.0.zip`.
 
 ThankMu is based on uBlock Origin Lite by Raymond Hill and contributors, under GPLv3. It is not made or endorsed by Raymond Hill.
 See [`NOTICE`](NOTICE) and [`chrome_plugin/LICENSE.txt`](chrome_plugin/LICENSE.txt).

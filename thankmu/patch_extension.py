@@ -4,8 +4,8 @@
 Same shape as upstream's platform/mv3/<platform>/patch-extension.js: runs on the finished
 build output after upstream's make-mv3.sh and edits it in place.
 
-    python3 thankmu/patch_extension.py packageDir=<dir> target=<dev|store> [brand=...] [patch=...] [targets=...]
-    python3 thankmu/patch_extension.py --check-config [target=<dev|store>] [brand=...] [patch=...] [targets=...]
+    python3 thankmu/patch_extension.py packageDir=<dir> target=<dev|store|alpha> [brand=...] [patch=...] [targets=...]
+    python3 thankmu/patch_extension.py --check-config [target=<dev|store|alpha>] [brand=...] [patch=...] [targets=...]
 
 All names, URLs and strings come from brand.json (identity), patch.json (which upstream
 strings change and how, and which ThankMu files are injected) and targets.json (per build
@@ -53,9 +53,13 @@ TARGET_BRAND_KEYS = ("name", "short_name")
 ICON_STATES = ("on", "off")
 REQUIRED_TARGETS = ("dev", "store")
 STORE_TARGET = "store"  # the Chrome Web Store assigns its own id: this target must not carry a manifest key
-# GPLv3 (W-P4): a build that is distributed to the public must say where its source is. The store target therefore
-# needs targets.json source_url; selecting it without one is a hard failure (before the upstream build starts).
-SOURCE_REQUIRED_TARGETS = (STORE_TARGET,)
+ALPHA_TARGET = "alpha"  # the public pre-alpha, installed from a zip: its id must be pinned or it can never pair
+# The targets a chrome-vX.Y.Z tag builds and publishes (scripts/ci/release_chrome.sh), both from the one upstream
+# build of the tagged tree. Everything a release does for the store zip it does for the alpha zip as well.
+RELEASE_TARGETS = (STORE_TARGET, ALPHA_TARGET)
+# GPLv3 (W-P4): a build that is distributed to the public must say where its source is. Both release targets are,
+# so each needs targets.json source_url; selecting one without it is a hard failure (before the upstream build starts).
+SOURCE_REQUIRED_TARGETS = RELEASE_TARGETS
 SOURCE_URL_RE = re.compile(r"^https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]{1,5})?/[A-Za-z0-9._~%-][A-Za-z0-9._~/%-]*$")
 EXT_ID_RE = re.compile(r"^[a-p]{32}$")
 
@@ -287,6 +291,15 @@ def load_targets(path):
             if not isinstance(src, str) or not SOURCE_URL_RE.match(src):
                 die(f"targets config: '{name}'.source_url must be an https URL with a path and no query "
                     f"(https://host/path), got {src!r}")
+    # One release tag publishes the released tree once (scripts/ci/publish_source_snapshot.sh), so every package
+    # built from that tag has to offer the reader that one publication. Targets naming different source repos would
+    # ship a package whose GPLv3 offer points where the source was never pushed, and nothing downstream could notice:
+    # the publish step and scripts/check_snapshot_repo_url.py only ever read one of them.
+    offers = {n: c["source_url"] for n, c in targets.items() if "source_url" in c}
+    if len(set(offers.values())) > 1:
+        die("targets config: the targets that declare source_url must all declare the same one (a release tag "
+            "publishes the source once, for every package it builds); got "
+            + ", ".join(f"{n}={offers[n]!r}" for n in sorted(offers)))
     return targets
 
 
@@ -752,7 +765,7 @@ def main(argv):
         print("thankmu config ok" + (f" (target {args['target']})" if args.get("target") else ""))
         return
     if "packageDir" not in args:
-        die("usage: patch_extension.py packageDir=<dir> target=<dev|store> [brand=<file>] [patch=<file>] [targets=<file>]")
+        die("usage: patch_extension.py packageDir=<dir> target=<dev|store|alpha> [brand=<file>] [patch=<file>] [targets=<file>]")
     target = get_target(targets, args.get("target"))
     patch_package(args["packageDir"], brand, patch, args["target"], target)
     ext = f", extension id {target['extension_id']}" if "extension_id" in target else ", no manifest key (store assigns the id)"

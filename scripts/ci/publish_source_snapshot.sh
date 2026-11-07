@@ -8,15 +8,23 @@
 # check_store_zip.py and BEFORE the job ends, so a release whose source failed to publish keeps no
 # artifact and cannot be submitted: the source is public no later than the binary, by construction.
 #
-# Usage: scripts/ci/publish_source_snapshot.sh X.Y.Z [--dry-run]
+# Usage: scripts/ci/publish_source_snapshot.sh X.Y.Z [--dry-run | --preflight]
 #   --dry-run builds, verifies and names the snapshot commit locally and pushes nothing, so
 #   release_chrome_dry_run rehearses this path with no public repo and no credential. Everything
 #   except the fetch and the push is the same code.
+#   --preflight runs only the configuration checks below and exits, touching no git repository. The
+#   release job runs it BEFORE the build as well as the real publish after it, because every one of
+#   these checks would otherwise first be reached at the end of the job: a tag cut against a missing
+#   credential, or against a snapshot URL that disagrees with the shipped source offer, builds the
+#   zip, fails here, discards the artifact and is spent for nothing. Cheap checks belong first.
 #
 # Real runs need two CI variables (Settings -> CI/CD -> Variables), both Protected (the tag is a
 # protected ref, ADR-001), the token also masked:
 #   SNAPSHOT_REPO_URL    https push URL of the public source repo. It lives only in this variable,
 #                        never in a tracked file, which is what keeps the host out of the repo (EX-002).
+#                        It must address the same repository as thankmu/targets.json store.source_url,
+#                        the offer the shipped package prints: scripts/check_snapshot_repo_url.py
+#                        compares them, in this mode and in a rehearsal that has the variable.
 #   SNAPSHOT_PUSH_TOKEN  a token with write access to that one repo and nothing else.
 #
 # What is published: the release commit's tree minus PRIVATE below, plus a generated README.md.
@@ -65,19 +73,30 @@ REQUIRED=(
 # fail the run rather than ship, whatever the exclude list above says.
 FORBIDDEN_RE='(^|/)(\.claude|\.env([.-][^/]*)?|[^/]*\.(key|pem|p12|pfx|jks))(/|$)'
 
-VERSION=""; DRY=0; TOKEN=""
+VERSION=""; DRY=0; PREFLIGHT=0; TOKEN=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1 ;;
-    -*) die "unknown option: $1 (usage: publish_source_snapshot.sh X.Y.Z [--dry-run])" ;;
-    *) [ -z "$VERSION" ] || die "usage: publish_source_snapshot.sh X.Y.Z [--dry-run] (two versions given: '$VERSION' and '$1')"; VERSION="$1" ;;
+    --preflight) PREFLIGHT=1 ;;
+    -*) die "unknown option: $1 (usage: publish_source_snapshot.sh X.Y.Z [--dry-run | --preflight])" ;;
+    *) [ -z "$VERSION" ] || die "usage: publish_source_snapshot.sh X.Y.Z [--dry-run | --preflight] (two versions given: '$VERSION' and '$1')"; VERSION="$1" ;;
   esac
   shift
 done
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "usage: publish_source_snapshot.sh X.Y.Z [--dry-run] (got '$VERSION'; strip the chrome-v tag prefix first)"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "usage: publish_source_snapshot.sh X.Y.Z [--dry-run | --preflight] (got '$VERSION'; strip the chrome-v tag prefix first)"
+if [ "$DRY" -eq 1 ] && [ "$PREFLIGHT" -eq 1 ]; then
+  die "--preflight and --dry-run are mutually exclusive: --preflight checks the real release's configuration, --dry-run rehearses without it"
+fi
 TAG="chrome-v$VERSION"
 command -v git >/dev/null || die "required tool not found: git"
 command -v python3 >/dev/null || die "required tool not found: python3"
+# The repo this pushes to must be the repo the shipped package offers the source at. Nothing else can
+# check it: the push URL is a CI variable by design (EX-002) and the offer is a tracked field, so
+# neither half can see the other, and a disagreement publishes the source where no reader is sent.
+# Checked in every mode that has the variable, because the answer does not depend on whether this
+# particular run pushes -- a rehearsal is the cheapest place of all to find a mismatch.
+check_snapshot_target() { python3 -I "$ROOT/scripts/check_snapshot_repo_url.py" "$ROOT/thankmu/targets.json"; }
+
 if [ "$DRY" -eq 0 ]; then
   require_env SNAPSHOT_REPO_URL SNAPSHOT_PUSH_TOKEN
   case "$SNAPSHOT_REPO_URL" in
@@ -87,10 +106,20 @@ if [ "$DRY" -eq 0 ]; then
     http://127.0.0.1[:/]*|http://localhost[:/]*) ;;
     *) die "SNAPSHOT_REPO_URL must be an https URL (the push token is sent over it)" ;;
   esac
+  check_snapshot_target
   # Copy the token into a plain variable and un-export the CI variable, so git and its credential
   # helper see it only through SNAPSHOT_PUSH_TOKEN_CUR, set for the one fetch or push being run.
   TOKEN="$SNAPSHOT_PUSH_TOKEN"
   export -n SNAPSHOT_PUSH_TOKEN
+elif [ -n "${SNAPSHOT_REPO_URL:-}" ]; then
+  check_snapshot_target
+else
+  echo ">> dry run: SNAPSHOT_REPO_URL is not set, so the source offer was not checked against it"
+fi
+
+if [ "$PREFLIGHT" -eq 1 ]; then
+  echo ">> preflight ok for $TAG: the credential is present and the snapshot target agrees with the source offer"
+  exit 0
 fi
 
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
@@ -130,18 +159,30 @@ done < <(git -C "$ROOT" ls-tree -r -z --full-tree HEAD)
 # Values come from thankmu/brand.json, so the public front page cannot drift from the build's own
 # brand config. The wording is a draft and goes to counsel with the About notice, the source offer
 # and the listing (store/README.md item 14).
-python3 -I - "$ROOT/thankmu/brand.json" "$VERSION" "$TAG" > "$work/README.md" <<'PY'
-import json, sys
+python3 -I - "$ROOT/thankmu/brand.json" "$VERSION" "$TAG" "$ROOT/thankmu/patch_extension.py" > "$work/README.md" <<'PY'
+import importlib.util, json, sys
 brand, version, tag = json.load(open(sys.argv[1])), sys.argv[2], sys.argv[3]
 for key in ("name", "credit", "package_name", "support_url"):
     if not brand.get(key):
         sys.exit(f"thankmu/brand.json {key} is empty: cannot generate the snapshot README")
+# One tag publishes this source once and it is the corresponding source of EVERY package that tag
+# builds, so the front page names them all. The list comes from the one place it is defined rather
+# than being written out again here, which is what stops it going stale when a target is added.
+spec = importlib.util.spec_from_file_location("thankmu_patch", sys.argv[4])
+patch = importlib.util.module_from_spec(spec)
+sys.dont_write_bytecode = True
+spec.loader.exec_module(patch)
+def zip_name(target):
+    stem = brand["package_name"] if target == "store" else f"{brand['package_name']}_{target}"
+    return f"`{stem}_{version}.zip`"
+packages = ", ".join(zip_name(t) for t in patch.RELEASE_TARGETS)
 print(f"""# {brand['name']} for Chrome: released source
 
 The complete corresponding source of each released {brand['name']} browser extension, published to
 meet the GNU General Public License, version 3.
 
-**This release:** {version} (store package `{brand['package_name']}_{version}.zip`, tag `{tag}`).
+**This release:** {version}, tag `{tag}`. It is the corresponding source of every package that
+release builds: {packages}.
 
 {brand['credit']} It is not made or endorsed by Raymond Hill.
 See [`NOTICE`](NOTICE) and [`chrome_plugin/LICENSE.txt`](chrome_plugin/LICENSE.txt).

@@ -13,12 +13,17 @@
 #   SNAPSHOT_REPO_URL    https push URL of the public source repo. Protected. It lives only here, never in a tracked
 #                        file, which is what keeps the host out of the repo.
 #   SNAPSHOT_PUSH_TOKEN  a token with write access to that one repo; Protected AND masked.
-# Release: push a chrome-vX.Y.Z tag (protected, ADR-001) -> store zip thankmu_chromium_X.Y.Z.zip as a job artifact,
-#   and the released source published to the public repo (scripts/ci/publish_source_snapshot.sh). Both or neither:
-#   the publish runs before the job ends, so a release whose source did not publish keeps no artifact to submit.
+# Release: push a chrome-vX.Y.Z tag (protected, ADR-001) -> one upstream build of the tagged tree, patched once per
+#   release target, giving two job artifacts: the store zip thankmu_chromium_X.Y.Z.zip (uploaded to the Chrome Web
+#   Store) and the alpha zip thankmu_chromium_alpha_X.Y.Z.zip (the public pre-alpha, handed to testers directly;
+#   it carries the pinned key so it installs under the id the app's PLUGIN_EXTENSION_IDS lists). Both get the same
+#   verification and the same zip check, and either failing fails the job.
+#   The released source is published once, to the public repo (scripts/ci/publish_source_snapshot.sh), and covers
+#   both packages. Both or neither: the publish runs before the job ends, so a release whose source did not publish
+#   keeps no artifact to submit.
 # Rehearsal: start a pipeline on any branch with the variable RELEASE_DRY_RUN_VERSION=X.Y.Z (UI "Run pipeline", or
 #   glab api -X POST projects/<id>/pipeline -f ref=<branch> -f 'variables[0][key]=RELEASE_DRY_RUN_VERSION' -f 'variables[0][value]=X.Y.Z'
-# ). It runs the same scripts/ci/release_chrome.sh as the tag job, for the store target, and keeps the zip for one day.
+# ). It runs the same scripts/ci/release_chrome.sh as the tag job, for every release target, and keeps the zips for one day.
 # It never needs a tag, so it is not a release. The variable is not a Settings variable: set it per run only.
 # The docker build image holds node, jq, zip, python3 and rsvg-convert. The ThankMu layer (thankmu/) rebrands the
 # upstream output inside that build; the verify step then re-runs on the runner (python3 only): no upstream marks
@@ -69,6 +74,11 @@ release_chrome:
   rules:
     - if: $CI_COMMIT_TAG =~ /^chrome-v[0-9]+\.[0-9]+\.[0-9]+$/
   script:
+    # The publish step's configuration, checked before the build rather than after it: the push
+    # credential exists, and the repo it pushes to is the repo the shipped source offer points at.
+    # Both are reached anyway at the end of this job, but by then the zip is built and a refusal
+    # discards the artifact and spends the tag for nothing (W-P4 item 10). No git repository touched.
+    - ./scripts/ci/publish_source_snapshot.sh "${CI_COMMIT_TAG#chrome-v}" --preflight
     - ./scripts/ci/release_chrome.sh "${CI_COMMIT_TAG#chrome-v}"
     # GPLv3: the source of the binary is public no later than the binary. Running it here, after the zip
     # passed its checks and before the job ends, is what couples them: a failed publish fails the job, so
@@ -80,7 +90,7 @@ release_chrome:
       - chrome_plugin/dist/build/thankmu_chromium_*.zip
     expire_in: never
 
-# Rehearsal of release_chrome without a tag. Same script, same store target, same checks. Manual-source pipelines
+# Rehearsal of release_chrome without a tag. Same script, same release targets, same checks. Manual-source pipelines
 # only (api, web, trigger), never a tag pipeline, and the artifact is named and expires so it cannot pass for a release.
 # The source publication is rehearsed with --dry-run: it builds and verifies the snapshot commit and pushes nothing,
 # so it needs neither the public repo nor a credential.
@@ -97,6 +107,40 @@ release_chrome_dry_run:
     paths:
       - chrome_plugin/dist/build/thankmu_chromium_*.zip
     expire_in: 1 day
+
+# Regenerate the Chrome Web Store screenshots from a real store-target build, on the runner (it has docker;
+# store/screenshots/generate.sh needs docker and a real Chromium, so it cannot run in this company's agent
+# containers -- that is the only reason this job exists). W-P4 items 4, 9 and U3.
+#
+# MANUAL ONLY, and never automatic: it builds two docker images and drives a real browser, and its output is
+# five PNGs that a person then reads and commits. Started by hand from the pipeline page (main, or an MR
+# pipeline to try a change to the capture before merging); never on a tag, a schedule or a release rehearsal,
+# so it can neither slow a release nor be reached by accident during one.
+#
+# After it runs: download the artifact and commit the PNGs that changed. 05-about.png shows the GPLv3 source
+# offer, so it needs a run whenever thankmu/targets.json store.source_url changes; the other four only change
+# when the pages themselves do. Nothing is uploaded anywhere by this job.
+screenshots:
+  stage: build
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - if: $RELEASE_DRY_RUN_VERSION
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+  script:
+    # The unpatched upstream build first: generate.sh re-patches a copy of it with the store target.
+    - ./scripts/ci/docker_build_chrome.sh
+    - ./store/screenshots/generate.sh
+  artifacts:
+    name: "screenshots-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - store/screenshots/*.png
+    expire_in: 1 week
 
 refresh_mirrors:
   stage: mirror

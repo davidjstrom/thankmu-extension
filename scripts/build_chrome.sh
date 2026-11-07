@@ -4,12 +4,20 @@
 # make-mv3.sh uses the subtree). Filter lists are fetched over HTTPS at build time
 # by upstream's make-rulesets.js.
 #
-# Usage: scripts/build_chrome.sh [X.Y.Z]
+# Usage: scripts/build_chrome.sh [X.Y.Z [target...]]
 #   no version  -> dev build (target "dev"), unpacked at chrome_plugin/dist/build/uBOLite.chromium/
-#   X.Y.Z       -> release build (target "store") + store zip at chrome_plugin/dist/build/<package_name>_X.Y.Z.zip
+#   X.Y.Z       -> release build of target "store" + zip at chrome_plugin/dist/build/<package_name>_X.Y.Z.zip
 #                  (package_name from thankmu/brand.json, e.g. thankmu_chromium_1.2.3.zip)
-# The target picks APP_ORIGIN and the dev manifest key from thankmu/targets.json (W-P3 part B).
-# After upstream's make-mv3.sh, the ThankMu layer (thankmu/) rebrands the output in place, then
+#   X.Y.Z t...  -> release build of each named target. Every target but "store" names itself in its zip
+#                  (thankmu_chromium_alpha_1.2.3.zip); "store" keeps the plain name, which is the file a
+#                  submission uploads. A release tag builds "store alpha" (scripts/ci/release_chrome.sh).
+# Several release targets share ONE upstream build: make-mv3.sh runs once, and each target is patched from
+# the same pristine output into its own directory (uBOLite.chromium.<target>/). That is deliberate. Filter
+# lists are fetched over HTTPS while that build runs, so building the targets separately would give each
+# one a different filter-list snapshot under the same version number; this way the packages a tag publishes
+# differ only in the things the target chooses -- app origin, extension id, name, icons.
+# The target picks APP_ORIGIN and the manifest key from thankmu/targets.json (W-P3 part B).
+# After upstream's make-mv3.sh, the ThankMu layer (thankmu/) rebrands the output, then
 # scripts/verify_chrome_package.sh proves no upstream marks remain and blocking files are untouched.
 # The pristine upstream output is kept at chrome_plugin/dist/build/uBOLite.chromium.unpatched/ for that comparison.
 # On success the build is also landed in builds/<target>/<version>-<shortsha>/ (see scripts/land_build.sh; not in CI).
@@ -19,8 +27,21 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/lib.sh"
 
 VERSION="${1:-}"
-if [ -n "$VERSION" ] && ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  die "version '$VERSION' must look like X.Y.Z (strip the chrome-v tag prefix first)"
+[ "$#" -eq 0 ] || shift
+TARGETS=("$@")
+if [ -n "$VERSION" ]; then
+  [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "version '$VERSION' must look like X.Y.Z (strip the chrome-v tag prefix first)"
+  [ "${#TARGETS[@]}" -gt 0 ] || TARGETS=(store)
+  seen=""
+  for t in "${TARGETS[@]}"; do
+    [ -n "$t" ] || die "a target name must not be empty"
+    case " $seen " in *" $t "*) die "target '$t' named twice" ;; esac
+    seen="$seen $t"
+  done
+else
+  # A build with no version is the unpacked dev build; there is nothing to choose.
+  [ "${#TARGETS[@]}" -eq 0 ] || die "a target can only be named for a release build: pass X.Y.Z first (got targets '${TARGETS[*]}' with no version)"
+  TARGETS=(dev)
 fi
 
 ROOT="$(cd "$HERE/.." && pwd)"
@@ -39,10 +60,13 @@ node_major="$(node -p 'process.versions.node.split(".")[0]')"
 for f in thankmu/brand.json thankmu/patch.json thankmu/targets.json thankmu/patch_extension.py thankmu/icon.svg; do
   [ -f "$ROOT/$f" ] || die "ThankMu layer file missing: $f"
 done
-if [ -n "$VERSION" ]; then TARGET=store; else TARGET=dev; fi
 # Fail on a missing/incomplete brand, patch or targets config before the (slow) upstream build, not after.
-# With the target: a store build without targets.json store.source_url (the GPLv3 source offer) fails here.
-python3 -I "$ROOT/thankmu/patch_extension.py" --check-config target="$TARGET"
+# Every requested target, not just the first: a release that cannot build its second package must fail now,
+# not after the first zip is already made. With the target: a release target without targets.json source_url
+# (the GPLv3 source offer), or one naming an id its manifest key does not give, fails here.
+for t in "${TARGETS[@]}"; do
+  python3 -I "$ROOT/thankmu/patch_extension.py" --check-config target="$t"
+done
 # The ThankMu extension's JS logic tests (pairing). node is only here and in the docker image, so the
 # build is where CI is guaranteed to run them; tests/run.sh runs them too when it can.
 js_tests=(); while IFS= read -r f; do js_tests+=("$f"); done < <(cd "$ROOT" && find thankmu -name '*.test.mjs' | sort)
@@ -64,26 +88,52 @@ cp -R "$PKG" "$UNPATCHED"
 # The zip upstream just made holds the UNPATCHED package; it must never be published.
 [ -z "$VERSION" ] || rm -f "dist/build/uBOLite_$VERSION.chromium.zip"
 
-python3 -I "$ROOT/thankmu/patch_extension.py" packageDir="$PKG" target="$TARGET"
-"$ROOT/scripts/verify_chrome_package.sh" --target "$TARGET" "$ROOT/$UBO_PREFIX/$UNPATCHED" "$ROOT/$UBO_PREFIX/$PKG"
-
 if [ -n "$VERSION" ]; then
   pkg_name="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["package_name"])' "$ROOT/thankmu/brand.json")"
   [ -n "$pkg_name" ] || die "thankmu/brand.json package_name is empty"
-  out="dist/build/${pkg_name}_$VERSION.zip"
-  rm -f "$out"
-  stage="$(mktemp -d)"
-  cp -R "$PKG"/. "$stage"/
-  rm -f "$stage/log.txt"   # same as upstream's packaging step
-  ( cd "$stage" && zip -qr "$ROOT/$UBO_PREFIX/$out" ./* )
-  rm -rf "$stage"
-else
-  out="$PKG/manifest.json"
 fi
-[ -e "$out" ] || die "build finished but expected output is missing: $out"
-echo "Artifact: $ROOT/$UBO_PREFIX/$out"
-
-# Last step, after the patch and the verification passed: leave a ready-to-load copy in builds/ (skipped in CI).
 [ -n "${CI:-}" ] || { : "${BUILD_SHORTSHA:=$(build_short_sha "$ROOT")}"; export BUILD_SHORTSHA; }
-land_zip=""; [ -z "$VERSION" ] || land_zip="$ROOT/$UBO_PREFIX/$out"
-"$ROOT/scripts/land_build.sh" "$TARGET" "$ROOT/$UBO_PREFIX/$PKG" ${land_zip:+"$land_zip"}
+
+for TARGET in "${TARGETS[@]}"; do
+  if [ -z "$VERSION" ]; then
+    # Dev: the upstream output is patched where it stands, as the only target of the build.
+    WORK="$PKG"
+  else
+    # Each release target is patched from the same pristine upstream output into its own directory, so one
+    # upstream build yields every package and none of them sees another's patch.
+    WORK="$PKG.$TARGET"
+    rm -rf "$WORK"
+    cp -R "$UNPATCHED" "$WORK"
+  fi
+  python3 -I "$ROOT/thankmu/patch_extension.py" packageDir="$WORK" target="$TARGET"
+  "$ROOT/scripts/verify_chrome_package.sh" --target "$TARGET" "$ROOT/$UBO_PREFIX/$UNPATCHED" "$ROOT/$UBO_PREFIX/$WORK"
+
+  if [ -n "$VERSION" ]; then
+    # "store" keeps the plain package name: that file is what a submission uploads. Any other target says
+    # which one it is, so two packages of the same version can never be mistaken for each other.
+    if [ "$TARGET" = store ]; then out="dist/build/${pkg_name}_$VERSION.zip"
+    else out="dist/build/${pkg_name}_${TARGET}_$VERSION.zip"; fi
+    rm -f "$out"
+    stage="$(mktemp -d)"
+    cp -R "$WORK"/. "$stage"/
+    rm -f "$stage/log.txt"   # same as upstream's packaging step
+    ( cd "$stage" && zip -qr "$ROOT/$UBO_PREFIX/$out" ./* )
+    rm -rf "$stage"
+  else
+    out="$WORK/manifest.json"
+  fi
+  [ -e "$out" ] || die "build finished but expected output is missing: $out"
+  echo "Artifact: $ROOT/$UBO_PREFIX/$out"
+
+  # Last step for this target, after its patch and its verification passed: leave a ready-to-load copy in
+  # builds/ (skipped in CI).
+  land_zip=""; [ -z "$VERSION" ] || land_zip="$ROOT/$UBO_PREFIX/$out"
+  "$ROOT/scripts/land_build.sh" "$TARGET" "$ROOT/$UBO_PREFIX/$WORK" ${land_zip:+"$land_zip"}
+done
+
+# The canonical build output keeps holding the first target's package, so a release leaves the store package
+# at the path everything already reads (and an MR build leaves the dev one, patched in place above).
+if [ -n "$VERSION" ]; then
+  rm -rf "$PKG"
+  cp -R "$PKG.${TARGETS[0]}" "$PKG"
+fi
